@@ -14,12 +14,14 @@ import {
   Calendar,
   BarChart3,
   Edit2,
-  Trash2
+  Trash2,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { io } from 'socket.io-client';
 
 import { useAppStore, Task, Project, Message } from './store/useAppStore';
+import { supabase } from './lib/supabase';
+import { chatWithLocalModel } from './lib/localAi';
 
 export default function App() {
   const {
@@ -37,6 +39,9 @@ export default function App() {
     editingTask,
     editingProject, setEditingProject,
     selectedTaskIdForTimeLog, setSelectedTaskIdForTimeLog,
+    isSettingsModalOpen, setIsSettingsModalOpen,
+    useLocalModel, setUseLocalModel,
+    localModelUrl, setLocalModelUrl,
     formData, setFormData,
     projectFormData, setProjectFormData,
     timeLogFormData, setTimeLogFormData,
@@ -50,15 +55,16 @@ export default function App() {
   useEffect(() => {
     fetchData();
 
-    const socket = io();
-
-    socket.on('db_changed', (data) => {
-      console.log('Real-time database update received via WebSocket', data);
-      fetchData();
-    });
+    const subscription = supabase
+      .channel('public:all')
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        console.log('Real-time database update received via Supabase', payload);
+        fetchData();
+      })
+      .subscribe();
 
     return () => {
-      socket.disconnect();
+      supabase.removeChannel(subscription);
     };
   }, [fetchData]);
 
@@ -124,21 +130,19 @@ export default function App() {
       return;
     }
 
-    const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks';
-    const method = editingTask ? 'PATCH' : 'POST';
-
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
+      let res;
+      if (editingTask) {
+        res = await supabase.from('tasks').update(formData).eq('id', editingTask.id);
+      } else {
+        res = await supabase.from('tasks').insert([formData]);
+      }
+
+      if (!res.error) {
         setIsModalOpen(false);
         fetchData();
       } else {
-        const data = await res.json();
-        alert(`Error: ${data.error}`);
+        alert(`Error: ${res.error.message}`);
       }
     } catch (error) {
       console.error('Error saving task:', error);
@@ -148,8 +152,8 @@ export default function App() {
   const handleDeleteTask = async (id: number) => {
     if (!confirm('Are you sure you want to delete this task?')) return;
     try {
-      const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchData();
+      const res = await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+      if (!res.error) fetchData();
     } catch (error) {
       console.error('Error deleting task:', error);
     }
@@ -162,21 +166,19 @@ export default function App() {
       return;
     }
 
-    const url = editingProject ? `/api/projects/${editingProject.id}` : '/api/projects';
-    const method = editingProject ? 'PATCH' : 'POST';
-
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(projectFormData)
-      });
-      if (res.ok) {
+      let res;
+      if (editingProject) {
+        res = await supabase.from('projects').update(projectFormData).eq('id', editingProject.id);
+      } else {
+        res = await supabase.from('projects').insert([projectFormData]);
+      }
+
+      if (!res.error) {
         setIsProjectModalOpen(false);
         fetchData();
       } else {
-        const data = await res.json();
-        alert(`Error: ${data.error}`);
+        alert(`Error: ${res.error.message}`);
       }
     } catch (error) {
       console.error('Error saving project:', error);
@@ -186,8 +188,9 @@ export default function App() {
   const handleDeleteProject = async (id: number) => {
     if (!confirm('Are you sure you want to delete this project? All associated tasks will also be deleted.')) return;
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchData();
+      const res = await supabase.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+      await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('project_id', id).is('deleted_at', null);
+      if (!res.error) fetchData();
     } catch (error) {
       console.error('Error deleting project:', error);
     }
@@ -201,23 +204,20 @@ export default function App() {
     }
 
     try {
-      // Simulate action via agent endpoint / chat since we only made the tool for it, 
-      // or optionally we could make a direct express route later if needed.
-      // But we will just simulate hitting the AI via chat for now or do a fetch to a new endpoint if we had it.
-      // Easiest is to send the hidden chat command if no route exists, but let's just make it robust.
-
-      // We will just hit chat with a structured tool call message behind the scenes
       setIsLoading(true);
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `Log ${timeLogFormData.hours} hours on task ${selectedTaskIdForTimeLog} for date ${timeLogFormData.date}` })
-      });
-      if (res.ok) {
+      const res = await supabase.from('time_logs').insert([{
+        task_id: selectedTaskIdForTimeLog,
+        hours: timeLogFormData.hours,
+        date: timeLogFormData.date
+      }]);
+
+      if (!res.error) {
         setIsTimeLogModalOpen(false);
         setIsRefreshing(true);
         await fetchData();
         setTimeout(() => setIsRefreshing(false), 1000);
+      } else {
+        alert(`Error: ${res.error.message}`);
       }
     } catch (error) {
       console.error('Error logging time:', error);
@@ -236,13 +236,23 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
-      });
-      const data = await res.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
+      if (useLocalModel) {
+        // Send the entire message history to the local model to retain context
+        const responseText = await chatWithLocalModel(
+          [...messages, { role: 'user', content: userMessage }],
+          localModelUrl
+        );
+        setMessages(prev => [...prev, { role: 'assistant', content: responseText }]);
+      } else {
+        // Cloud route (Gemini via Serverless endpoint)
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: userMessage })
+        });
+        const data = await res.json();
+        setMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
+      }
 
       // Show visual refresh cue
       setIsRefreshing(true);
@@ -307,6 +317,14 @@ export default function App() {
         </nav>
 
         <div className="p-4 border-t border-gray-100">
+          <button
+            onClick={() => { setIsSettingsModalOpen(true); setIsNavOpen(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-gray-500 hover:bg-gray-50 mb-4`}
+          >
+            <Settings size={20} />
+            <span className="font-medium">Settings</span>
+          </button>
+
           <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-4 text-white">
             <p className="text-xs font-medium opacity-80 uppercase tracking-wider mb-1">Pro Plan</p>
             <p className="text-sm font-bold mb-3">AI Insights Active</p>
@@ -977,6 +995,74 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isSettingsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSettingsModalOpen(false)}
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-sm rounded-3xl shadow-2xl relative z-10 overflow-hidden"
+            >
+              <div className="p-8">
+                <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                  <Settings size={20} className="text-indigo-600" /> Settings
+                </h3>
+                <div className="space-y-6">
+                  {/* Model Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">Use Local Model</p>
+                      <p className="text-xs text-gray-500">Bypass Gemini entirely</p>
+                    </div>
+                    <button
+                      onClick={() => setUseLocalModel(!useLocalModel)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${useLocalModel ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${useLocalModel ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+
+                  {/* Local Model URL */}
+                  {useLocalModel && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="space-y-2"
+                    >
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest">Local Server URL</label>
+                      <input
+                        type="url"
+                        value={localModelUrl}
+                        onChange={e => setLocalModelUrl(e.target.value)}
+                        placeholder="http://localhost:1234/v1"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                      />
+                    </motion.div>
+                  )}
+
+                  <div className="pt-4">
+                    <button
+                      onClick={() => setIsSettingsModalOpen(false)}
+                      className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </div>

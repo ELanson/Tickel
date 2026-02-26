@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
 
 export interface Task {
     id: number;
@@ -41,6 +42,9 @@ interface AppState {
     isModalOpen: boolean;
     isProjectModalOpen: boolean;
     isTimeLogModalOpen: boolean;
+    isSettingsModalOpen: boolean;
+    useLocalModel: boolean;
+    localModelUrl: string;
     editingTask: Task | null;
     editingProject: Project | null;
     selectedTaskIdForTimeLog: number | null;
@@ -80,6 +84,9 @@ interface AppState {
     setIsModalOpen: (isOpen: boolean) => void;
     setIsProjectModalOpen: (isOpen: boolean) => void;
     setIsTimeLogModalOpen: (isOpen: boolean) => void;
+    setIsSettingsModalOpen: (isOpen: boolean) => void;
+    setUseLocalModel: (useLocal: boolean) => void;
+    setLocalModelUrl: (url: string) => void;
     setEditingTask: (task: Task | null) => void;
     setEditingProject: (project: Project | null) => void;
     setSelectedTaskIdForTimeLog: (id: number | null) => void;
@@ -108,6 +115,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     isModalOpen: false,
     isProjectModalOpen: false,
     isTimeLogModalOpen: false,
+    isSettingsModalOpen: false,
+    useLocalModel: true,
+    localModelUrl: 'https://tea.rickelindustries.co.ke/',
     editingTask: null,
     editingProject: null,
     selectedTaskIdForTimeLog: null,
@@ -146,6 +156,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     setIsModalOpen: (isModalOpen) => set({ isModalOpen }),
     setIsProjectModalOpen: (isProjectModalOpen) => set({ isProjectModalOpen }),
     setIsTimeLogModalOpen: (isTimeLogModalOpen) => set({ isTimeLogModalOpen }),
+    setIsSettingsModalOpen: (isSettingsModalOpen) => set({ isSettingsModalOpen }),
+    setUseLocalModel: (useLocalModel) => set({ useLocalModel }),
+    setLocalModelUrl: (localModelUrl) => set({ localModelUrl }),
     setEditingTask: (editingTask) => set({ editingTask }),
     setEditingProject: (editingProject) => set({ editingProject }),
     setSelectedTaskIdForTimeLog: (selectedTaskIdForTimeLog) => set({ selectedTaskIdForTimeLog }),
@@ -166,22 +179,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     fetchData: async () => {
         try {
             const [tasksRes, projectsRes, metricsRes] = await Promise.all([
-                fetch('/api/tasks'),
-                fetch('/api/projects'),
-                fetch('/api/metrics')
+                supabase.from('tasks').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+                supabase.from('projects').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+                supabase.from('time_logs').select('hours')
             ]);
-            const tasksData = await tasksRes.json();
-            const projectsData = await projectsRes.json();
-            const metricsData = await metricsRes.json();
+
+            if (tasksRes.error) throw tasksRes.error;
+            if (projectsRes.error) throw projectsRes.error;
+            if (metricsRes.error) throw metricsRes.error;
+
+            const tasksData = tasksRes.data || [];
+            const projectsData = projectsRes.data || [];
+            const timeLogs = metricsRes.data || [];
+            const totalHours = timeLogs.reduce((sum, log) => sum + (log.hours || 0), 0);
 
             set({
-                tasks: Array.isArray(tasksData) ? tasksData : [],
-                projects: Array.isArray(projectsData) ? projectsData : [],
+                tasks: tasksData as Task[],
+                projects: projectsData as Project[],
+                totalHours: totalHours
             });
-
-            if (metricsData && typeof metricsData.totalHours === 'number') {
-                set({ totalHours: metricsData.totalHours });
-            }
 
             // Set default project if none selected and projects exist
             const state = get();
@@ -191,7 +207,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 }));
             }
         } catch (error) {
-            console.error('Error fetching data:', error);
+            console.error('Error fetching data from Supabase:', error);
         }
     }
 }));
