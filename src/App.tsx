@@ -17,100 +17,50 @@ import {
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { io } from 'socket.io-client';
 
-interface Task {
-  id: number;
-  title: string;
-  description: string;
-  project_id: number;
-  project_name: string;
-  priority: 'low' | 'medium' | 'high';
-  status: 'todo' | 'in_progress' | 'done';
-  estimated_hours: number;
-  created_at: string;
-}
-
-interface Project {
-  id: number;
-  name: string;
-  description: string;
-  status: string;
-}
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { useAppStore, Task, Project, Message } from './store/useAppStore';
 
 export default function App() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [totalHours, setTotalHours] = useState(0);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I am your Work Intelligence Agent. How can I help you manage your tasks today?' }
-  ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'reports'>('dashboard');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
-  const [isTimeLogModalOpen, setIsTimeLogModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [selectedTaskIdForTimeLog, setSelectedTaskIdForTimeLog] = useState<number | null>(null);
+  const {
+    tasks, setEditingTask,
+    projects,
+    totalHours,
+    messages, setMessages,
+    input, setInput,
+    isLoading, setIsLoading,
+    isRefreshing, setIsRefreshing,
+    activeTab, setActiveTab,
+    isModalOpen, setIsModalOpen,
+    isProjectModalOpen, setIsProjectModalOpen,
+    isTimeLogModalOpen, setIsTimeLogModalOpen,
+    editingTask,
+    editingProject, setEditingProject,
+    selectedTaskIdForTimeLog, setSelectedTaskIdForTimeLog,
+    formData, setFormData,
+    projectFormData, setProjectFormData,
+    timeLogFormData, setTimeLogFormData,
+    isNavOpen, setIsNavOpen,
+    isSidebarOpen, setIsSidebarOpen,
+    fetchData
+  } = useAppStore();
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    project_id: 0,
-    priority: 'medium' as 'low' | 'medium' | 'high',
-    estimated_hours: 0,
-    status: 'todo' as 'todo' | 'in_progress' | 'done'
-  });
-  const [projectFormData, setProjectFormData] = useState({
-    name: '',
-    description: '',
-    status: 'active'
-  });
-  const [timeLogFormData, setTimeLogFormData] = useState({
-    hours: 0,
-    date: new Date().toISOString().split('T')[0]
-  });
-
-  const [isNavOpen, setIsNavOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const fetchData = async () => {
-    try {
-      const [tasksRes, projectsRes, metricsRes] = await Promise.all([
-        fetch('/api/tasks'),
-        fetch('/api/projects'),
-        fetch('/api/metrics')
-      ]);
-      const tasksData = await tasksRes.json();
-      const projectsData = await projectsRes.json();
-      const metricsData = await metricsRes.json();
-
-      setTasks(Array.isArray(tasksData) ? tasksData : []);
-      setProjects(Array.isArray(projectsData) ? projectsData : []);
-      if (metricsData && typeof metricsData.totalHours === 'number') {
-        setTotalHours(metricsData.totalHours);
-      }
-
-      // Set default project if none selected and projects exist
-      if (formData.project_id === 0 && Array.isArray(projectsData) && projectsData.length > 0) {
-        setFormData(prev => ({ ...prev, project_id: projectsData[0].id }));
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
-  };
 
   useEffect(() => {
     fetchData();
-  }, []);
+
+    const socket = io();
+
+    socket.on('db_changed', (data) => {
+      console.log('Real-time database update received via WebSocket', data);
+      fetchData();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [fetchData]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -325,7 +275,7 @@ export default function App() {
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2 text-indigo-600 font-bold text-xl">
             <TrendingUp size={24} />
-            <span>CAudio Tracker</span>
+            <span>Taskion</span>
           </div>
           <button onClick={() => setIsNavOpen(false)} className="lg:hidden p-2 text-gray-400">
             <Plus size={20} className="rotate-45" />

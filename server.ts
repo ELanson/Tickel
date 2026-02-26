@@ -1,4 +1,6 @@
 import express from "express";
+import http from "http";
+import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -104,10 +106,15 @@ const logError = (context: string, error: any) => {
 
 async function startServer() {
   const app = express();
+  const httpServer = http.createServer(app);
+  const io = new Server(httpServer, {
+    cors: { origin: "*", methods: ["GET", "POST", "PATCH", "DELETE"] }
+  });
+
   app.set('trust proxy', 1);
   app.use(express.json());
 
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
   // --- AI Tool Implementations ---
   const tools = {
@@ -370,6 +377,7 @@ async function startServer() {
 
       const stmt = db.prepare('INSERT INTO projects (name, description) VALUES (?, ?)');
       const info = stmt.run(name, description);
+      io.emit('db_changed', { source: 'api', action: 'create_project' });
       res.json({ success: true, id: info.lastInsertRowid });
     } catch (error) {
       next(error);
@@ -396,6 +404,7 @@ async function startServer() {
         return res.status(404).json({ error: "Project not found" });
       }
 
+      io.emit('db_changed', { source: 'api', action: 'update_project' });
       res.json({ success: true });
     } catch (error) {
       next(error);
@@ -413,6 +422,7 @@ async function startServer() {
 
       db.prepare('UPDATE tasks SET deleted_at = CURRENT_TIMESTAMP WHERE project_id = ? AND deleted_at IS NULL').run(id);
 
+      io.emit('db_changed', { source: 'api', action: 'delete_project' });
       res.json({ success: true });
     } catch (error) {
       next(error);
@@ -444,6 +454,7 @@ async function startServer() {
 
       const stmt = db.prepare('INSERT INTO tasks (title, description, project_id, priority, estimated_hours) VALUES (?, ?, ?, ?, ?)');
       const info = stmt.run(title, description, project_id, priority, estimated_hours);
+      io.emit('db_changed', { source: 'api', action: 'create_task' });
       res.json({ success: true, id: info.lastInsertRowid });
     } catch (error) {
       next(error);
@@ -633,6 +644,11 @@ async function startServer() {
         const { name, args } = part.functionCall;
         const toolResult = (tools as any)[name](args);
 
+        const aiMutationTools = ['create_task', 'update_task', 'delete_task', 'create_project', 'update_project', 'delete_project', 'log_time', 'undo_last_action'];
+        if (aiMutationTools.includes(name) && toolResult.success) {
+          io.emit('db_changed', { source: 'ai', action: name });
+        }
+
         // Send tool result back to model for final response
         const secondResponse = await ai.models.generateContent({
           model: "gemini-2.0-flash-exp",
@@ -677,7 +693,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
