@@ -245,3 +245,40 @@ export async function chatWithLocalModel(
         throw error;
     }
 }
+export async function parseTaskFromPrompt(
+    prompt: string,
+    localModelUrl: string
+): Promise<any> {
+    const baseUrl = localModelUrl.endsWith('/') ? localModelUrl.slice(0, -1) : localModelUrl;
+    const endpoint = `${baseUrl}/chat/completions`;
+
+    const systemPrompt = `You are a precision data extractor. 
+Extract task details from the user's prompt into a JSON object.
+Fields: title, description, priority (low, medium, high, urgent), status (todo, in_progress, done, blocked), due_date (YYYY-MM-DD), estimated_hours (number), tags (array of strings), subtasks (array of {title, completed}).
+Current Date: ${new Date().toISOString().split('T')[0]}
+Only return the JSON object. No conversation.`;
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'local-model',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0,
+                response_format: { type: 'json_object' }
+            })
+        });
+
+        if (!response.ok) throw new Error(`AI Parse Error: ${response.statusText}`);
+        const data = await response.json();
+        const content = data.choices[0].message.content;
+        return JSON.parse(content);
+    } catch (error) {
+        console.error('Failed to parse task via AI:', error);
+        return null;
+    }
+}
