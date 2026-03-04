@@ -783,6 +783,20 @@ export const useAppStore = create<AppState>()(
                 }
             },
             initializeAuth: () => {
+                // Production Settings Re-Sync: If we're on a live domain but localStorage 
+                // has stale 'local model' settings from dev, override them once.
+                const isProduction = typeof window !== 'undefined' &&
+                    !window.location.hostname.includes('localhost') &&
+                    !window.location.hostname.includes('127.0.0.1');
+
+                if (isProduction && get().useLocalModel) {
+                    console.log('[System] Production detected. Optimizing AI settings for Cloud...');
+                    set((state) => ({
+                        useLocalModel: false,
+                        workspaceSettings: { ...state.workspaceSettings, cloudAiEnabled: true }
+                    }));
+                }
+
                 // Initial session check
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     get().setUser(session?.user ?? null);
