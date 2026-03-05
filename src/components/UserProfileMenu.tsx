@@ -390,7 +390,8 @@ export const UserProfileMenu: React.FC = () => {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: -8 }}
                         transition={{ duration: 0.15 }}
-                        className={`absolute right-0 top-14 w-80 rounded-3xl border shadow-2xl overflow-hidden z-50 ${dk ? 'bg-[#121214] border-gray-800 shadow-black/60' : 'bg-white border-gray-100 shadow-gray-200/60'}`}
+                        className={`absolute right-0 top-14 w-[calc(100vw-32px)] sm:w-80 max-w-[340px] rounded-3xl border shadow-2xl overflow-hidden z-50 ${dk ? 'bg-[#121214] border-gray-800 shadow-black/60' : 'bg-white border-gray-100 shadow-gray-200/60'}`}
+                        style={{ right: '0px' }}
                     >
                         <AnimatePresence mode="wait">
                             {!showPanel ? (
@@ -443,7 +444,7 @@ export const UserProfileMenu: React.FC = () => {
                                 </motion.div>
                             ) : (
                                 <motion.div key="panel" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} transition={{ duration: 0.12 }}
-                                    className="p-5 max-h-[80vh] overflow-y-auto">
+                                    className="p-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
                                     {activePanel === 'profile' && <EditProfilePanel onBack={backToMenu} />}
                                     {activePanel === 'security' && <SecurityPanel onBack={backToMenu} />}
                                     {activePanel === 'privacy' && <PrivacyPanel onBack={backToMenu} />}

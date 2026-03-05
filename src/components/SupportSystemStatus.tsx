@@ -144,27 +144,29 @@ export const SupportSystemStatus: React.FC = () => {
                     {/* Uptime Overview */}
                     <div className={`p-6 rounded-2xl border ${dk ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-200'}`}>
                         <h4 className={`text-xs font-bold uppercase tracking-widest mb-4 ${dk ? 'text-gray-500' : 'text-gray-400'}`}>90-Day Uptime Overview</h4>
-                        <div className="flex gap-1 h-12 items-end">
-                            {Array.from({ length: 90 }, (_, i) => {
-                                const date = new Date();
-                                date.setDate(date.getDate() - (89 - i));
-                                const dateStr = date.toISOString().split('T')[0];
-                                const dayIncidents = incidents.filter(inc => inc.created_at.startsWith(dateStr));
-                                const hasOutage = dayIncidents.some(inc => inc.severity === 'critical');
-                                const hasDegraded = dayIncidents.some(inc => inc.severity === 'major' || inc.severity === 'minor');
+                        <div className="overflow-x-auto custom-scrollbar -mx-1 px-1 pb-2">
+                            <div className="flex gap-1 h-12 items-end min-w-[600px]">
+                                {Array.from({ length: 90 }, (_, i) => {
+                                    const date = new Date();
+                                    date.setDate(date.getDate() - (89 - i));
+                                    const dateStr = date.toISOString().split('T')[0];
+                                    const dayIncidents = incidents.filter(inc => inc.created_at.startsWith(dateStr));
+                                    const hasOutage = dayIncidents.some(inc => inc.severity === 'critical');
+                                    const hasDegraded = dayIncidents.some(inc => inc.severity === 'major' || inc.severity === 'minor');
 
-                                return (
-                                    <button
-                                        key={i}
-                                        onClick={() => setSelectedDay({ date: dateStr, incidents: dayIncidents })}
-                                        className={`flex-1 h-8 rounded-sm transition-all hover:h-10 hover:opacity-100 ${hasOutage ? 'bg-rose-500/60' :
-                                            hasDegraded ? 'bg-amber-500/60' :
-                                                'bg-emerald-500/60'
-                                            } ${selectedDay?.date === dateStr ? 'ring-2 ring-indigo-500 h-10 opacity-100' : 'opacity-80'}`}
-                                        title={`${dateStr}: ${dayIncidents.length} incidents`}
-                                    />
-                                );
-                            })}
+                                    return (
+                                        <button
+                                            key={i}
+                                            onClick={() => setSelectedDay({ date: dateStr, incidents: dayIncidents })}
+                                            className={`flex-1 h-8 rounded-sm transition-all hover:h-10 hover:opacity-100 ${hasOutage ? 'bg-rose-500/60' :
+                                                hasDegraded ? 'bg-amber-500/60' :
+                                                    'bg-emerald-500/60'
+                                                } ${selectedDay?.date === dateStr ? 'ring-2 ring-indigo-500 h-10 opacity-100' : 'opacity-80'}`}
+                                            title={`${dateStr}: ${dayIncidents.length} incidents`}
+                                        />
+                                    );
+                                })}
+                            </div>
                         </div>
                         <div className="flex items-center justify-between mt-2">
                             <span className="text-[10px] text-gray-500">90 days ago</span>

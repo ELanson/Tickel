@@ -1048,7 +1048,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
             >
               <LayoutDashboard size={18} />
-              <span className="font-medium text-sm">Dashboard</span>
+              <span className="font-medium text-sm whitespace-nowrap">Dashboard</span>
             </button>
 
             <button
@@ -1056,7 +1056,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'tasks' ? (isDarkMode ? 'bg-[#1a1c1d] text-emerald-400' : 'bg-gray-900 text-emerald-400') : (isDarkMode ? 'text-emerald-500 hover:bg-gray-800/50 hover:text-emerald-400' : 'text-emerald-600 hover:bg-emerald-50')} border border-transparent`}
             >
               <CheckCircle2 size={18} />
-              <span className="font-medium text-sm">My Tasks</span>
+              <span className="font-medium text-sm whitespace-nowrap">My Tasks</span>
             </button>
 
             <button
@@ -1160,14 +1160,14 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleOpenProjectModal()}
-                    className={`flex items-center gap-2 ${isDarkMode ? 'bg-[#1A1A1C] border-gray-700 text-gray-300 hover:bg-gray-800' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-sm font-bold transition-all shadow-sm`}
+                    className={`flex items-center gap-2 ${isDarkMode ? 'bg-[#1A1A1C] border-gray-700 text-gray-300 hover:bg-gray-800' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-sm font-bold transition-all shadow-sm whitespace-nowrap`}
                   >
                     <Briefcase size={16} />
                     Projects
                   </button>
                   <button
                     onClick={() => handleOpenModal()}
-                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-900/20"
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-900/20 whitespace-nowrap"
                   >
                     <Plus size={16} />
                     New Task
@@ -1429,7 +1429,7 @@ export default function App() {
                         {(Array.isArray(tasks) ? tasks : []).filter(t => t.status === 'in_progress').slice(0, 3).map(task => (
                           <div key={task.id} className="group">
                             <div className="flex justify-between items-center mb-2">
-                              <p className={`font-medium text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-800'}`}>{task.title}</p>
+                              <p className={`font-medium text-sm truncate pr-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-800'}`}>{task.title}</p>
                               <p className={`text-[10px] font-bold ${getRemainingColor(task.due_date)} px-2 py-1 rounded-full flex items-center gap-1.5 transition-colors`}>
                                 <span className={`w-1 h-1 rounded-full ${task.due_date && new Date(task.due_date) < new Date() ? 'bg-red-500' : 'bg-current'} animate-pulse`}></span>
                                 {getTimeRemaining(task.due_date)}
