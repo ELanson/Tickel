@@ -25,7 +25,7 @@ const TABS: Tab[] = [
 ];
 
 export const SupportHub: React.FC = () => {
-    const { isDarkMode, isAdmin, userProfile, supportTab, setSupportTab } = useAppStore();
+    const { isDarkMode, isAdmin, userProfile, supportTab, setSupportTab, supportTickets, systemHealth } = useAppStore();
     const dk = isDarkMode;
     const role = isAdmin ? 'admin' : (userProfile?.global_role === 'Manager' ? 'manager' : 'contributor');
 
@@ -52,11 +52,15 @@ export const SupportHub: React.FC = () => {
                 {isAdmin && (
                     <div className="flex gap-3 flex-wrap">
                         <div className={`px-4 py-2 rounded-xl border text-center ${dk ? 'bg-[#1a1c1d] border-gray-800' : 'bg-white border-gray-200'}`}>
-                            <p className={`text-lg font-black text-rose-400`}>2</p>
+                            <p className={`text-lg font-black text-rose-400`}>
+                                {supportTickets.filter(t => t.status === 'open').length}
+                            </p>
                             <p className="text-[10px] text-gray-500 uppercase tracking-wider">Open Tickets</p>
                         </div>
                         <div className={`px-4 py-2 rounded-xl border text-center ${dk ? 'bg-[#1a1c1d] border-gray-800' : 'bg-white border-gray-200'}`}>
-                            <p className={`text-lg font-black text-emerald-400`}>99.9%</p>
+                            <p className={`text-lg font-black ${systemHealth.dbStatus === 'operational' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                {systemHealth.dbStatus === 'operational' ? '99.9%' : (systemHealth.dbStatus === 'degraded' ? '98.4%' : '0%')}
+                            </p>
                             <p className="text-[10px] text-gray-500 uppercase tracking-wider">System Health</p>
                         </div>
                     </div>

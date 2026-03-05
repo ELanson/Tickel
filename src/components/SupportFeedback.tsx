@@ -11,7 +11,7 @@ const STATUS_CONFIG = {
 };
 
 export const SupportFeedback: React.FC = () => {
-    const { isDarkMode, isAdmin, user, feedbackItems, fetchFeedbackItems, voteFeedback, addFeedbackItem } = useAppStore();
+    const { isDarkMode, isAdmin, user, feedbackItems, fetchFeedbackItems, voteFeedback, addFeedbackItem, addNotification } = useAppStore();
     const [showForm, setShowForm] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [isLoading, setIsLoading] = useState(false);
@@ -66,7 +66,17 @@ export const SupportFeedback: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-0.5">Vote on features and submit your own ideas.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={async () => { setIsLoading(true); await fetchFeedbackItems(); setIsLoading(false); }}
+                    <button onClick={async () => {
+                        setIsLoading(true);
+                        try {
+                            await fetchFeedbackItems();
+                            addNotification({ type: 'success', message: 'Feedback list refreshed' });
+                        } catch (error) {
+                            addNotification({ type: 'error', message: 'Failed to refresh feedback' });
+                        } finally {
+                            setIsLoading(false);
+                        }
+                    }}
                         className={`p-2.5 rounded-xl border text-sm transition-colors ${dk ? 'bg-[#1a1c1d] border-gray-800 text-gray-400 hover:text-white' : 'bg-white border-gray-200 text-gray-500 hover:text-gray-900'}`}
                     >
                         <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />

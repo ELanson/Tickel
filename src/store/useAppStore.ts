@@ -88,6 +88,19 @@ export interface Department {
     teams?: Team[];
 }
 
+export interface Lead {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    company: string;
+    role: string;
+    website: string;
+    address: string;
+    source: 'scraping' | 'vision' | 'manual';
+    created_at: string;
+}
+
 export interface WorkspaceSettings {
     name: string;
     description: string;
@@ -134,6 +147,23 @@ export interface Notification {
     timestamp: number;
 }
 
+export interface SystemHealth {
+    dbStatus: 'operational' | 'degraded' | 'outage';
+    aiLatency: number;
+    lastCheck: string;
+    securityAlerts: number;
+}
+
+export interface SystemIncident {
+    id: string;
+    title: string;
+    description: string;
+    severity: 'minor' | 'major' | 'critical';
+    status: 'resolved' | 'investigating' | 'identified';
+    created_at: string;
+    resolved_at?: string;
+}
+
 interface AppState {
     // Global Data
     tasks: Task[];
@@ -144,12 +174,14 @@ interface AppState {
     totalHours: number;
     messages: Message[];
     aiActionLogs: any[];
+    leads: Lead[];
 
     // UI State
     input: string;
     isLoading: boolean;
     isRefreshing: boolean;
-    activeTab: 'dashboard' | 'tasks' | 'reports' | 'analytics' | 'team' | 'support';
+    activeTab: 'dashboard' | 'tasks' | 'reports' | 'analytics' | 'team' | 'support' | 'leads';
+    teakelActiveTab: 'search' | 'vision' | 'list' | 'reports' | 'settings';
 
     // Modals & Editing
     isModalOpen: boolean;
@@ -223,6 +255,12 @@ interface AppState {
     isChatHistoryOpen: boolean;
     isTeamModalOpen: boolean;
 
+    // System Status
+    systemHealth: SystemHealth;
+    incidents: SystemIncident[];
+    fetchSystemHealth: () => Promise<void>;
+    fetchIncidents: () => Promise<void>;
+
     // Notifications
     notifications: Notification[];
     addNotification: (n: Omit<Notification, 'id' | 'timestamp'>) => void;
@@ -248,6 +286,9 @@ interface AppState {
 
     // Actions
     timeLogs: any[]; // Store full time logs for metric calculations
+    setLeads: (leads: Lead[]) => void;
+    addLead: (lead: Omit<Lead, 'id' | 'created_at'>) => void;
+    setTeakelActiveTab: (tab: AppState['teakelActiveTab']) => void;
     setTasks: (tasks: Task[]) => void;
     setProjects: (projects: Project[]) => void;
     setDepartments: (departments: Department[]) => void;
@@ -354,6 +395,8 @@ export const useAppStore = create<AppState>()(
             isLoading: false,
             isRefreshing: false,
             activeTab: 'dashboard',
+            teakelActiveTab: 'search',
+            leads: [],
 
             isModalOpen: false,
             isProjectModalOpen: false,
@@ -424,6 +467,14 @@ export const useAppStore = create<AppState>()(
             activeMainChatId: null,
             activeSupportChatId: null,
             isChatHistoryOpen: false,
+
+            systemHealth: {
+                dbStatus: 'operational',
+                aiLatency: 0,
+                lastCheck: new Date().toISOString(),
+                securityAlerts: 0
+            },
+            incidents: [],
 
             notifications: [],
             addNotification: (n) => set((state) => ({
@@ -504,6 +555,14 @@ export const useAppStore = create<AppState>()(
             setIsLoading: (isLoading) => set({ isLoading }),
             setIsRefreshing: (isRefreshing) => set({ isRefreshing }),
             setActiveTab: (activeTab) => set({ activeTab }),
+            setTeakelActiveTab: (teakelActiveTab) => set({ teakelActiveTab }),
+            setLeads: (leads) => set({ leads }),
+            addLead: (lead) => set((state) => ({
+                leads: [
+                    { ...lead, id: Math.random().toString(36).substring(7), created_at: new Date().toISOString() },
+                    ...state.leads
+                ]
+            })),
             setPomodoroState: (patch) => set((state) => ({
                 pomodoroState: typeof patch === 'function'
                     ? patch(state.pomodoroState)
@@ -553,6 +612,49 @@ export const useAppStore = create<AppState>()(
             setUserProfile: (profile) => set((state) => ({
                 userProfile: { ...state.userProfile, ...profile }
             })),
+
+            fetchSystemHealth: async () => {
+                const startTime = Date.now();
+                try {
+                    // Verifying DB connection with a minimal profile check
+                    const { error } = await supabase.from('profiles').select('id').limit(1);
+                    const latency = Date.now() - startTime;
+
+                    set((state) => ({
+                        systemHealth: {
+                            ...state.systemHealth,
+                            dbStatus: error ? 'outage' : (latency > 800 ? 'degraded' : 'operational'),
+                            lastCheck: new Date().toISOString(),
+                            // Simulate AI latency if not recently updated
+                            aiLatency: state.systemHealth.aiLatency || Math.floor(Math.random() * 200) + 300,
+                            // Derived security alerts from action logs (simulated for demo purpose)
+                            securityAlerts: state.aiActionLogs.filter(log =>
+                                log.action_type?.includes('delete') ||
+                                log.action_type?.includes('role') ||
+                                log.details?.priority === 'critical'
+                            ).length
+                        }
+                    }));
+                } catch (err) {
+                    set((state) => ({
+                        systemHealth: { ...state.systemHealth, dbStatus: 'outage', lastCheck: new Date().toISOString() }
+                    }));
+                }
+            },
+
+            fetchIncidents: async () => {
+                try {
+                    const { data, error } = await supabase
+                        .from('system_incidents')
+                        .select('*')
+                        .order('created_at', { ascending: false });
+
+                    if (error) throw error;
+                    set({ incidents: data as SystemIncident[] });
+                } catch (err) {
+                    console.error('Error fetching incidents:', err);
+                }
+            },
             setUser: async (user) => {
                 set({ user });
                 if (user) {

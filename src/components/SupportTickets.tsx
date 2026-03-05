@@ -27,7 +27,7 @@ const formatDate = (iso: string) => {
 };
 
 export const SupportTickets: React.FC = () => {
-    const { isDarkMode, isAdmin, userProfile, user, supportTickets, fetchSupportTickets, addSupportTicket, updateTicketStatus } = useAppStore();
+    const { isDarkMode, isAdmin, userProfile, user, supportTickets, fetchSupportTickets, addSupportTicket, updateTicketStatus, addNotification } = useAppStore();
     const [showForm, setShowForm] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
@@ -82,7 +82,17 @@ export const SupportTickets: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-0.5">{role === 'admin' ? 'All tickets across the organization.' : role === 'manager' ? 'Team-related tickets.' : 'Your submitted tickets.'}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={async () => { setIsLoading(true); await fetchSupportTickets(); setIsLoading(false); }}
+                    <button onClick={async () => {
+                        setIsLoading(true);
+                        try {
+                            await fetchSupportTickets();
+                            addNotification({ type: 'success', message: 'Tickets refreshed' });
+                        } catch (error) {
+                            addNotification({ type: 'error', message: 'Failed to refresh tickets' });
+                        } finally {
+                            setIsLoading(false);
+                        }
+                    }}
                         className={`p-2.5 rounded-xl border text-sm transition-colors ${dk ? 'bg-[#1a1c1d] border-gray-800 text-gray-400 hover:text-white' : 'bg-white border-gray-200 text-gray-500 hover:text-gray-900'}`}
                     >
                         <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />

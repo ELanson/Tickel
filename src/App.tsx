@@ -68,6 +68,7 @@ import { ReportBuilderModal } from './components/ReportBuilderModal';
 import { ReportViewer } from './components/ReportViewer';
 import { SupportHub } from './components/SupportHub';
 import { UserProfileMenu } from './components/UserProfileMenu';
+import { TeakelDashboard } from './components/TeakelDashboard';
 import {
   TotalTimeModal, TasksCompletedModal, ActiveTasksModal,
   FocusScoreModal, ConsistencyModal
@@ -946,7 +947,10 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-      <div className="flex w-full h-full bg-inherit">
+
+      {activeTab === 'leads' && <TeakelDashboard />}
+
+      <div className={`flex w-full h-full bg-inherit ${activeTab === 'leads' ? 'hidden' : ''}`}>
         {/* Sidebar */}
         {/* Sidebar */}
         <aside className={`
@@ -1046,12 +1050,32 @@ export default function App() {
               <LayoutDashboard size={18} />
               <span className="font-medium text-sm">Dashboard</span>
             </button>
+
+            <button
+              onClick={() => { setActiveTab('tasks'); setIsNavOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'tasks' ? (isDarkMode ? 'bg-[#1a1c1d] text-emerald-400' : 'bg-gray-900 text-emerald-400') : (isDarkMode ? 'text-emerald-500 hover:bg-gray-800/50 hover:text-emerald-400' : 'text-emerald-600 hover:bg-emerald-50')} border border-transparent`}
+            >
+              <CheckCircle2 size={18} />
+              <span className="font-medium text-sm">My Tasks</span>
+            </button>
+
             <button
               onClick={() => { setActiveTab('analytics'); setIsNavOpen(false); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'analytics' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
             >
               <BarChart3 size={18} />
               <span className="font-medium text-sm">Analytics</span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('leads'); setIsNavOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${activeTab === 'leads' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
+            >
+              <div className="flex items-center gap-3">
+                <Target size={18} />
+                <span className="font-medium text-sm">Tea</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-indigo-500 text-white text-[10px] font-bold">New</span>
             </button>
             <button
               onClick={() => { setActiveTab('team'); setIsNavOpen(false); }}
@@ -1081,15 +1105,6 @@ export default function App() {
               <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold">New</span>
             </button>
 
-            {/* Separator and My Tasks */}
-            <div className={`my-4 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}></div>
-            <button
-              onClick={() => { setActiveTab('tasks'); setIsNavOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'tasks' ? (isDarkMode ? 'bg-[#1a1c1d] text-emerald-400' : 'bg-gray-900 text-emerald-400') : (isDarkMode ? 'text-emerald-500 hover:bg-gray-800/50 hover:text-emerald-400' : 'text-emerald-600 hover:bg-emerald-50')} border border-transparent`}
-            >
-              <CheckCircle2 size={18} />
-              <span className="font-medium text-sm">My Tasks</span>
-            </button>
           </nav>
 
           {/* Bottom Settings / Throne */}
