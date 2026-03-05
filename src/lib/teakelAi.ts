@@ -1,13 +1,11 @@
 import { useAppStore } from '../store/useAppStore';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3005';
-
 export const TeakelAIService = {
     async yukiSearch(query: string) {
         try {
             const token = process.env.VITE_SUPABASE_ANON_KEY || 'dummy'; // Can be improved with actual auth
 
-            const response = await fetch(`${API_BASE_URL}/api/teakel-search`, {
+            const response = await fetch('/api/teakel-search', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -33,7 +31,7 @@ export const TeakelAIService = {
         try {
             const token = process.env.VITE_SUPABASE_ANON_KEY || 'dummy';
 
-            const response = await fetch(`${API_BASE_URL}/api/teakel-vision`, {
+            const response = await fetch('/api/teakel-vision', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
