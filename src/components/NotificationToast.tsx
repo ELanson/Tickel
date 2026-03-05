@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
-import { useAppStore, Notification } from '../store/useAppStore';
+import { useAppStore, AppNotification } from '../store/useAppStore';
 
 const ICON_MAP = {
     success: <CheckCircle2 size={18} className="text-emerald-500" />,
@@ -24,20 +24,20 @@ export const NotificationToast = () => {
         <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none">
             <AnimatePresence mode="popLayout">
                 {notifications.map((n) => (
-                    <ToastItem key={n.id} notification={n} onRemove={removeNotification} />
+                    <NotificationItem key={n.id} notification={n} onRemove={() => removeNotification(n.id)} />
                 ))}
             </AnimatePresence>
         </div>
     );
 };
 
-const ToastItem = ({ notification, onRemove }: { notification: Notification; onRemove: (id: string) => void }) => {
+const NotificationItem = ({ notification, onRemove }: { notification: AppNotification; onRemove: () => void }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
-            onRemove(notification.id);
+            onRemove();
         }, 5000);
         return () => clearTimeout(timer);
-    }, [notification.id, onRemove]);
+    }, [onRemove]); // Removed notification.id from dependencies as onRemove no longer takes it.
 
     return (
         <motion.div
@@ -52,12 +52,17 @@ const ToastItem = ({ notification, onRemove }: { notification: Notification; onR
                 <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-0.5">
                     {notification.type}
                 </p>
-                <p className="text-sm text-gray-200 leading-relaxed font-medium">
-                    {notification.message}
+                <p className="text-sm text-gray-200 leading-relaxed font-bold">
+                    {notification.title}
                 </p>
+                {notification.body && (
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-1">
+                        {notification.body.replace(/[#*`]/g, '')}
+                    </p>
+                )}
             </div>
             <button
-                onClick={() => onRemove(notification.id)}
+                onClick={() => onRemove()}
                 className="mt-0.5 text-gray-500 hover:text-white transition-colors"
             >
                 <X size={16} />

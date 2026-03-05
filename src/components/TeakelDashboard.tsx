@@ -8,35 +8,51 @@ import {
     Trash2, CheckCircle2, AlertCircle, Eye
 } from 'lucide-react';
 import { useAppStore, Lead } from '../store/useAppStore';
+import { NotificationBell } from './NotificationBell';
+import { TeakelAIService } from '../lib/teakelAi';
 
 // --- Shared Components ---
-const TeakelSidebarItem = ({ icon: Icon, label, active, onClick, badge }: any) => (
+const TeakelSidebarItem = ({ icon: Icon, label, active, onClick, badge, isOpen }: any) => (
     <button
         onClick={onClick}
-        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${active ? 'bg-[#1a1c1d] text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/5' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'} group`}
+        title={!isOpen ? label : undefined}
+        className={`w-full flex items-center ${isOpen ? 'justify-between px-4' : 'justify-center p-3'} py-3 rounded-xl transition-all ${active ? 'bg-[#1a1c1d] text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/5' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'} group`}
     >
         <div className="flex items-center gap-3">
             <Icon size={18} className={active ? 'text-emerald-400' : 'text-gray-500 group-hover:text-gray-400'} />
-            <span className="font-bold text-sm tracking-tight">{label}</span>
+            {isOpen && <span className="font-bold text-sm tracking-tight whitespace-nowrap">{label}</span>}
         </div>
-        {badge && (
-            <span className="px-1.5 py-0.5 rounded-full bg-indigo-500 text-white text-[10px] font-black uppercase">{badge}</span>
+        {badge && isOpen && (
+            <span className="px-1.5 py-0.5 rounded-full bg-indigo-500 text-white text-[10px] font-black uppercase shrink-0">{badge}</span>
         )}
     </button>
 );
 
+
 // --- Yuki-Search Module ---
 const YukiSearch = () => {
-    const { isDarkMode } = useAppStore();
+    const { isDarkMode, addLead } = useAppStore();
     const [query, setQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
 
-    const handleSearch = (e: React.FormEvent) => {
+    const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!query.trim()) return;
         setIsSearching(true);
-        // Simulate search
-        setTimeout(() => setIsSearching(false), 2000);
+
+        try {
+            const leads = await TeakelAIService.yukiSearch(query);
+            // Add all returned leads to the store if any
+            if (Array.isArray(leads) && leads.length > 0) {
+                leads.forEach((l: any) => addLead({ ...l, source: 'search' }));
+                // Optionally clear query or show success message here in future
+            }
+        } catch (error) {
+            console.error("YukiSearch failed:", error);
+            // You might want to add a toast notification here
+        } finally {
+            setIsSearching(false);
+        }
     };
 
     return (
@@ -104,25 +120,49 @@ const YukiVision = () => {
     const [isScanning, setIsScanning] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         setIsScanning(true);
-        // Simulate Gemini Extraction
-        setTimeout(() => {
-            addLead({
-                name: 'Sophia Brown',
-                email: 'sophia@infinititech.labs',
-                phone: '+1 (555) 123-4567',
-                company: 'InfinitiTech Labs',
-                role: 'Technology Innovation Manager',
-                website: 'www.infinititech.labs',
-                address: 'Cambridge, Massachusetts, USA',
-                source: 'vision'
+
+        try {
+            // Read file as Base64 for Gemini
+            return new Promise<void>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const base64Str = event.target?.result as string;
+                        // Extract just the data part (remove "data:image/jpeg;base64,")
+                        const base64Data = base64Str.split(',')[1];
+
+                        const extractedLead = await TeakelAIService.yukiVision(base64Data, file.type);
+
+                        if (extractedLead && (extractedLead.name || extractedLead.company || extractedLead.email)) {
+                            addLead({
+                                ...extractedLead,
+                                source: 'vision'
+                            });
+                        }
+                    } catch (err) {
+                        console.error("Vision API processing error: ", err);
+                    } finally {
+                        setIsScanning(false);
+                        if (fileRef.current) fileRef.current.value = '';
+                        resolve();
+                    }
+                };
+                reader.onerror = (err) => {
+                    console.error("FileReader error: ", err);
+                    setIsScanning(false);
+                    reject(err);
+                };
+                reader.readAsDataURL(file);
             });
+
+        } catch (error) {
+            console.error("File processing failed:", error);
             setIsScanning(false);
-            if (fileRef.current) fileRef.current.value = '';
-        }, 3000);
+        }
     };
 
     return (
@@ -311,6 +351,7 @@ const DetailItem = ({ icon: Icon, label, value, isDarkMode }: any) => (
 // --- Main Dashboard Component ---
 export const TeakelDashboard: React.FC = () => {
     const { isDarkMode, teakelActiveTab, setTeakelActiveTab, setActiveTab, userProfile } = useAppStore();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     const isGlobalAdmin = userProfile?.global_role === 'Global Admin';
 
@@ -353,45 +394,58 @@ export const TeakelDashboard: React.FC = () => {
             )}
 
             {/* Teakel Sidebar */}
-            <aside className={`w-72 shrink-0 flex flex-col border-r ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-200 text-gray-900'}`}>
+            <aside className={`${isSidebarOpen ? 'w-72' : 'w-24'} shrink-0 relative flex flex-col border-r transition-all duration-300 ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-200 text-gray-900'}`}>
+                <button
+                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                    className={`absolute -right-3 top-8 w-6 h-6 rounded-full border flex items-center justify-center z-10 transition-colors shadow-sm ${isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-500' : 'bg-white border-gray-200 text-gray-500 hover:text-gray-900 border-gray-300'}`}
+                >
+                    <ChevronRight size={14} className={`transform transition-transform ${isSidebarOpen ? 'rotate-180' : ''}`} />
+                </button>
+
                 {/* Brand Header */}
-                <div className="p-8 mb-4">
+                <div className={`p-8 mb-4 ${!isSidebarOpen && 'px-5'}`}>
                     <div className="flex items-center gap-3 mb-1">
-                        <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20 p-2 overflow-hidden">
-                            <img src="/TICKEL Logo 192px invert.png" className="w-full h-full object-contain" alt="Tickel" />
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isDarkMode ? 'bg-white' : 'bg-black text-white'} shadow-md p-1.5 overflow-hidden transition-all duration-300 mx-auto`}>
+                            <img src={isDarkMode ? "/TICKEL Logo 192px.png" : "/TICKEL Logo 192px invert.png"} className="w-full h-full object-contain" alt="Tickel" />
                         </div>
-                        <div>
-                            <h1 className="text-xl font-black tracking-tight leading-none bg-gradient-to-r from-white via-emerald-100 to-white bg-clip-text text-transparent">Teakel</h1>
-                            <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mt-0.5">By Rickel Industries</p>
-                        </div>
+                        {isSidebarOpen && (
+                            <div className="overflow-hidden">
+                                <h1 className="text-xl font-black tracking-tight leading-none bg-gradient-to-r from-emerald-500 via-emerald-400 to-indigo-500 bg-clip-text text-transparent">Teakel</h1>
+                                <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest mt-0.5 whitespace-nowrap">By Rickel Industries</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                <nav className="flex-1 px-4 space-y-2">
+                <nav className="flex-1 px-4 space-y-2 relative">
                     <TeakelSidebarItem
                         icon={Search}
                         label="Yuki-Search"
                         active={teakelActiveTab === 'search'}
                         onClick={() => setTeakelActiveTab('search')}
                         badge="AI"
+                        isOpen={isSidebarOpen}
                     />
                     <TeakelSidebarItem
                         icon={Scan}
                         label="Yuki-Vision"
                         active={teakelActiveTab === 'vision'}
                         onClick={() => setTeakelActiveTab('vision')}
+                        isOpen={isSidebarOpen}
                     />
                     <TeakelSidebarItem
                         icon={Table}
                         label="Leads List"
                         active={teakelActiveTab === 'list'}
                         onClick={() => setTeakelActiveTab('list')}
+                        isOpen={isSidebarOpen}
                     />
                     <TeakelSidebarItem
                         icon={BarChart3}
                         label="Reports"
                         active={teakelActiveTab === 'reports'}
                         onClick={() => setTeakelActiveTab('reports')}
+                        isOpen={isSidebarOpen}
                     />
 
                     <div className={`my-6 border-t ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`} />
@@ -401,24 +455,39 @@ export const TeakelDashboard: React.FC = () => {
                         label="Settings"
                         active={teakelActiveTab === 'settings'}
                         onClick={() => setTeakelActiveTab('settings')}
+                        isOpen={isSidebarOpen}
                     />
                     <button
                         onClick={() => setActiveTab('dashboard')}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isDarkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'} mt-12 overflow-hidden relative group`}
+                        title={!isSidebarOpen ? "Back to Main Dashboard" : undefined}
+                        className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center px-0'} py-3 rounded-xl transition-all ${isDarkMode ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'} mt-12 overflow-hidden relative group`}
                     >
                         <ArrowLeft size={18} />
-                        <span className="font-bold text-sm tracking-tight">Back to Main</span>
+                        {isSidebarOpen && <span className="font-bold text-sm tracking-tight whitespace-nowrap">Back to Main</span>}
                     </button>
                 </nav>
 
-                <div className="p-6 mt-auto">
-                    <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-[#1a1c1d] border-gray-800' : 'bg-gray-50 border-gray-200'}`}>
-                        <div className="flex items-center gap-2 mb-2">
-                            <Shield size={14} className="text-emerald-500" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">System Secure</span>
+                <div className={`p-6 mt-auto ${!isSidebarOpen && 'px-4'}`}>
+                    {isSidebarOpen ? (
+                        <div className="flex flex-col gap-4">
+                            <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-[#1a1c1d] border-gray-800' : 'bg-gray-50 border-gray-200'}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Shield size={14} className="text-emerald-500 shrink-0" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">System Secure</span>
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-medium leading-relaxed">
+                                    Yukime AI may produce inaccurate information about people, places, or facts.
+                                </p>
+                            </div>
+                            <p className="text-[10px] text-gray-500 font-bold leading-tight mt-2 text-center">
+                                Powered by Yukime 2.5 from <a href="https://www.rickelindustries.co.ke" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline">Rickel Industries</a>
+                            </p>
                         </div>
-                        <p className="text-[10px] text-gray-500 font-bold leading-tight">All leads represent verified business data and scanned resources.</p>
-                    </div>
+                    ) : (
+                        <div className="flex justify-center -mb-2" title="System Secure - Yukime AI may produce inaccurate information.">
+                            <Shield size={18} className="text-emerald-500" />
+                        </div>
+                    )}
                 </div>
             </aside>
 
@@ -429,6 +498,9 @@ export const TeakelDashboard: React.FC = () => {
                     <div className="flex items-center gap-4">
                         <span className={`text-[10px] font-black uppercase tracking-[0.3em] ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}>Yukime Intelligence Stream</span>
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <NotificationBell />
                     </div>
                 </header>
 

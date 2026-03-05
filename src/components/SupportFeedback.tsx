@@ -70,9 +70,9 @@ export const SupportFeedback: React.FC = () => {
                         setIsLoading(true);
                         try {
                             await fetchFeedbackItems();
-                            addNotification({ type: 'success', message: 'Feedback list refreshed' });
+                            addNotification({ type: 'success', title: 'Feedback Refreshed', body: 'The roadmap and feedback list have been updated.' });
                         } catch (error) {
-                            addNotification({ type: 'error', message: 'Failed to refresh feedback' });
+                            addNotification({ type: 'error', title: 'Refresh Failed', body: 'Failed to sync with the feedback server.' });
                         } finally {
                             setIsLoading(false);
                         }

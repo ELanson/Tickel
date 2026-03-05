@@ -86,9 +86,9 @@ export const SupportTickets: React.FC = () => {
                         setIsLoading(true);
                         try {
                             await fetchSupportTickets();
-                            addNotification({ type: 'success', message: 'Tickets refreshed' });
+                            addNotification({ type: 'success', title: 'Tickets Refreshed', body: 'The support ticket list has been synchronized with the server.' });
                         } catch (error) {
-                            addNotification({ type: 'error', message: 'Failed to refresh tickets' });
+                            addNotification({ type: 'error', title: 'Refresh Failed', body: 'Could not connect to the support server. Please try again later.' });
                         } finally {
                             setIsLoading(false);
                         }

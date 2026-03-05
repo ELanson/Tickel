@@ -278,8 +278,8 @@ User Role: ${userGlobalRole}
                             animate={{ opacity: 1, y: 0 }}
                             className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                         >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'assistant' ? accent.bg + ' text-white' : dk ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
-                                {msg.role === 'assistant' ? <Sparkles size={14} /> : <User size={14} />}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${msg.role === 'assistant' ? accent.bg + ' text-white' : dk ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
+                                {msg.role === 'assistant' ? <img src="/Yukime-icon-192.png" className="w-full h-full object-cover" alt="Yukime" /> : <User size={14} />}
                             </div>
                             <div className={`max-w-[95%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user'
                                 ? dk ? 'bg-gray-700 text-white rounded-tr-sm' : 'bg-indigo-600 text-white rounded-tr-sm'
@@ -299,10 +299,11 @@ User Role: ${userGlobalRole}
                         </motion.div>
                     ))}
                 </AnimatePresence>
-
                 {isLoading && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${accent.bg} text-white`}><Sparkles size={14} /></div>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden ${accent.bg} text-white`}>
+                            <img src="/Yukime-icon-192.png" className="w-full h-full object-cover" alt="Yukime" />
+                        </div>
                         <div className={`px-4 py-3 rounded-2xl rounded-tl-sm ${dk ? 'bg-gray-800/80 border border-gray-700/50' : 'bg-gray-100'}`}>
                             <div className="flex items-center gap-1.5">
                                 {[0, 1, 2].map(i => (

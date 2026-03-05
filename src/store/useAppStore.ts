@@ -42,6 +42,20 @@ export interface Message {
     content: string;
 }
 
+export interface Appointment {
+    id: string;
+    title: string;
+    description?: string;
+    start_time: string; // ISO
+    end_time: string;   // ISO
+    date: string;       // YYYY-MM-DD
+    is_google_synced?: boolean;
+    google_event_id?: string;
+    location?: string;
+    color?: string;
+    created_at: string;
+}
+
 export interface TeamMember {
     id: string;
     team_id: string;
@@ -140,11 +154,14 @@ export interface WorkspaceSettings {
     cloudAiModel: 'gemini-2.5-pro' | 'gemini-1.5-flash';
 }
 
-export interface Notification {
+export interface AppNotification {
     id: string;
     type: 'success' | 'error' | 'warning' | 'info';
-    message: string;
+    title: string;
+    body?: string; // Markdown support
     timestamp: number;
+    isRead: boolean;
+    isSeen: boolean; // For glow/shake reset
 }
 
 export interface SystemHealth {
@@ -255,16 +272,31 @@ interface AppState {
     isChatHistoryOpen: boolean;
     isTeamModalOpen: boolean;
 
+    // Planner
+    plannerView: 'month' | 'week' | 'day';
+    selectedPlannerDate: string; // YYYY-MM-DD
+    appointments: Appointment[];
+    dayPlan: {
+        date: string;
+        items: { time: string; activity: string; type: 'task' | 'appointment' | 'break'; refId?: string | number }[];
+    } | null;
+
     // System Status
     systemHealth: SystemHealth;
     incidents: SystemIncident[];
     fetchSystemHealth: () => Promise<void>;
     fetchIncidents: () => Promise<void>;
 
-    // Notifications
-    notifications: Notification[];
-    addNotification: (n: Omit<Notification, 'id' | 'timestamp'>) => void;
+    notifications: AppNotification[];
+    isNotificationModalOpen: boolean;
+    addNotification: (n: Omit<AppNotification, 'id' | 'timestamp' | 'isRead' | 'isSeen'>) => void;
     removeNotification: (id: string) => void;
+    markNotificationAsRead: (id: string) => void;
+    markAllNotificationsAsRead: () => void;
+    clearUnseenNotifications: () => void;
+    setIsNotificationModalOpen: (isOpen: boolean) => void;
+    broadcastNotification: (data: { type: AppNotification['type']; title: string; body: string }) => Promise<{ error: any }>;
+    subscribeToGlobalNotifications: () => () => void;
 
     // Pomodoro Timer
     pomodoroState: {
@@ -376,6 +408,15 @@ interface AppState {
     fetchAllProfiles: () => Promise<void>;
     assignUserToTeam: (userId: string, teamId: string, role: 'Manager' | 'Contributor' | 'Viewer') => Promise<{ error: any }>;
     removeUserFromTeam: (userId: string, teamId: string) => Promise<{ error: any }>;
+
+    // Planner Actions
+    setAppointments: (appointments: Appointment[]) => void;
+    addAppointment: (app: Partial<Appointment>) => void;
+    updateAppointment: (id: string, patch: Partial<Appointment>) => void;
+    deleteAppointment: (id: string) => void;
+    setPlannerView: (view: 'month' | 'week' | 'day') => void;
+    setSelectedPlannerDate: (date: string) => void;
+    setDayPlan: (plan: AppState['dayPlan']) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -397,6 +438,8 @@ export const useAppStore = create<AppState>()(
             activeTab: 'dashboard',
             teakelActiveTab: 'search',
             leads: [],
+            appointments: [],
+            dayPlan: null,
 
             isModalOpen: false,
             isProjectModalOpen: false,
@@ -468,6 +511,10 @@ export const useAppStore = create<AppState>()(
             activeSupportChatId: null,
             isChatHistoryOpen: false,
 
+            // Planner Initial State
+            plannerView: 'month',
+            selectedPlannerDate: new Date().toISOString().split('T')[0],
+
             systemHealth: {
                 dbStatus: 'operational',
                 aiLatency: 0,
@@ -477,15 +524,32 @@ export const useAppStore = create<AppState>()(
             incidents: [],
 
             notifications: [],
+            isNotificationModalOpen: false,
             addNotification: (n) => set((state) => ({
                 notifications: [
                     ...state.notifications,
-                    { ...n, id: Math.random().toString(36).substring(7), timestamp: Date.now() }
+                    {
+                        ...n,
+                        id: Math.random().toString(36).substring(7),
+                        timestamp: Date.now(),
+                        isRead: false,
+                        isSeen: false
+                    }
                 ]
             })),
             removeNotification: (id) => set((state) => ({
                 notifications: state.notifications.filter((n) => n.id !== id)
             })),
+            markNotificationAsRead: (id) => set((state) => ({
+                notifications: state.notifications.map(n => n.id === id ? { ...n, isRead: true } : n)
+            })),
+            markAllNotificationsAsRead: () => set((state) => ({
+                notifications: state.notifications.map(n => ({ ...n, isRead: true }))
+            })),
+            clearUnseenNotifications: () => set((state) => ({
+                notifications: state.notifications.map(n => ({ ...n, isSeen: true }))
+            })),
+            setIsNotificationModalOpen: (isNotificationModalOpen) => set({ isNotificationModalOpen }),
 
             formData: {
                 title: '',
@@ -581,6 +645,31 @@ export const useAppStore = create<AppState>()(
             setActiveReportTemplate: (activeReportTemplate) => set({ activeReportTemplate }),
             setGeneratedReportData: (generatedReportData) => set({ generatedReportData }),
             setIsTeamModalOpen: (isTeamModalOpen) => set({ isTeamModalOpen }),
+
+            // Planner Actions
+            setAppointments: (appointments) => set({ appointments }),
+            addAppointment: (app) => set(state => {
+                const newApp: Appointment = {
+                    id: Math.random().toString(36).substring(7),
+                    title: 'New Appointment',
+                    start_time: new Date().toISOString(),
+                    end_time: new Date().toISOString(),
+                    date: new Date().toISOString().split('T')[0],
+                    created_at: new Date().toISOString(),
+                    ...app
+                };
+                return { appointments: [...state.appointments, newApp] };
+            }),
+            updateAppointment: (id, patch) => set(state => ({
+                appointments: state.appointments.map(a => a.id === id ? { ...a, ...patch } : a)
+            })),
+            deleteAppointment: (id) => set(state => ({
+                appointments: state.appointments.filter(a => a.id !== id)
+            })),
+            setPlannerView: (plannerView) => set({ plannerView }),
+            setSelectedPlannerDate: (selectedPlannerDate) => set({ selectedPlannerDate }),
+            setDayPlan: (dayPlan) => set({ dayPlan }),
+
             generateReport: async (config) => {
                 set({ isGeneratingReport: true });
                 try {
@@ -1316,9 +1405,9 @@ export const useAppStore = create<AppState>()(
                 const toName = toProfile?.full_name || 'Member';
                 const { error } = await supabase.from('pokes').insert([{ from_id: fromId, to_id: toUserId }]);
                 if (error) {
-                    get().addNotification({ type: 'error', message: "Failed to send buzz." });
+                    get().addNotification({ type: 'error', title: "Buzz Failed", body: "Failed to send buzz." });
                 } else {
-                    get().addNotification({ type: 'success', message: `Buzz sent to ${toName}!` });
+                    get().addNotification({ type: 'success', title: "Buzz Sent", body: `Buzz sent to **${toName}**!` });
                 }
             },
 
@@ -1337,7 +1426,39 @@ export const useAppStore = create<AppState>()(
                         const fromProfile = get().allProfiles.find(p => p.id === payload.new.from_id);
                         get().addNotification({
                             type: 'info',
-                            message: `${fromProfile?.full_name || 'Someone'} buzzed you! "Hey i am onlin and active come join"`
+                            title: 'New Buzz!',
+                            body: `**${fromProfile?.full_name || 'Someone'}** buzzed you!\n\n"Hey i am online and active come join"`
+                        });
+                    })
+                    .subscribe();
+
+                return () => {
+                    supabase.removeChannel(subscription);
+                };
+            },
+
+            broadcastNotification: async (data) => {
+                const uid = get().user?.id;
+                if (!uid) return { error: 'Not authenticated' };
+                const { error } = await supabase.from('global_notifications').insert([{
+                    ...data,
+                    created_by: uid
+                }]);
+                return { error };
+            },
+
+            subscribeToGlobalNotifications: () => {
+                const subscription = supabase
+                    .channel('global_notifications')
+                    .on('postgres_changes', {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'global_notifications'
+                    }, (payload: any) => {
+                        get().addNotification({
+                            type: payload.new.type,
+                            title: payload.new.title,
+                            body: payload.new.body
                         });
                     })
                     .subscribe();

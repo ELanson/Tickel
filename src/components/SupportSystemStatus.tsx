@@ -90,9 +90,9 @@ export const SupportSystemStatus: React.FC = () => {
                             setIsRefreshing(true);
                             try {
                                 await Promise.all([fetchSystemHealth(), fetchIncidents()]);
-                                addNotification({ type: 'success', message: 'System status updated successfully' });
+                                addNotification({ type: 'success', title: 'System status updated successfully' });
                             } catch (error) {
-                                addNotification({ type: 'error', message: 'Failed to refresh system status' });
+                                addNotification({ type: 'error', title: 'Failed to refresh system status' });
                             } finally {
                                 setIsRefreshing(false);
                             }

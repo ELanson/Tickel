@@ -122,6 +122,38 @@ const TOOLS = [
                 required: ['task_id', 'hours']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_appointments',
+            description: 'Retrieves all calendar appointments, optionally filtered by date.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    date: { type: 'string', description: 'Date filter (YYYY-MM-DD)' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'create_appointment',
+            description: 'Create a calendar event/appointment.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    title: { type: 'string', description: 'Event title' },
+                    description: { type: 'string', description: 'Event description' },
+                    start_time: { type: 'string', description: 'Start time (ISO string or HH:mm)' },
+                    end_time: { type: 'string', description: 'End time (ISO string or HH:mm)' },
+                    date: { type: 'string', description: 'Event date (YYYY-MM-DD)' },
+                    location: { type: 'string', description: 'Venue or link' }
+                },
+                required: ['title', 'start_time', 'end_time', 'date']
+            }
+        }
     }
 ];
 
@@ -144,6 +176,14 @@ You ARE authorized to perform CRUD operations (Create, Read, Update, Delete) on 
    - start_date → today (${new Date().toISOString().split('T')[0]})
 3. Notify the user in your final reply about which fields were missing and what defaults were applied. Example: "I've created the task. I used default priority (Medium) and status (To-Do) since you didn't specify them."
 4. If the user did not mention a project, pick the most recently active project from get_projects result. If get_projects returns an empty list, YOU MUST call create_project with name="General" and status="active" first, then use its ID.
+
+## CALENDAR & DAY PLANNING
+1. You can manage appointments using get_appointments and create_appointment.
+2. When asked to "Suggest my day" or "Plan my day", you should:
+   - Call get_tasks and get_appointments for the requested date.
+   - Analyze priorities and deadlines.
+   - Propose an optimized schedule that balances deep work (tasks) and meetings (appointments).
+   - Use a clear, encouraging tone.
 
 ## TOOL CALLING FORMAT
 If you need to use a tool, you MUST use the following format:
@@ -370,6 +410,15 @@ export async function chatWithLocalModel(
                         const { error } = await supabase.from('time_logs').insert([{ ...args, user_id: userId }]);
                         if (!error) didMutate = true;
                         result = error ? { error: error.message } : { success: true };
+                    } else if (name === 'get_appointments') {
+                        let query = supabase.from('appointments').select('*').order('start_time', { ascending: true });
+                        if (args.date) query = query.eq('date', args.date);
+                        const { data, error } = await query;
+                        result = error ? { error: error.message } : { appointments: data };
+                    } else if (name === 'create_appointment') {
+                        const { error, data } = await supabase.from('appointments').insert([{ ...args, user_id: userId }]).select();
+                        if (!error) didMutate = true;
+                        result = error ? { error: error.message } : { success: true, appointment: data[0] };
                     }
                 } catch (e: any) { result = { error: e.message }; }
 

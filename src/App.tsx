@@ -48,11 +48,15 @@ import {
   Brain,
   Timer,
   TrendingDown,
-  Square
+  Square,
+  Bold,
+  Italic,
+  Link,
+  List
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { useAppStore, Task, Project, Message } from './store/useAppStore';
+import { useAppStore, Task, Project, Message, AppNotification } from './store/useAppStore';
 import { supabase } from './lib/supabase';
 import { chatWithLocalModel, parseTaskFromPrompt } from './lib/localAi';
 import { routeMessage } from './lib/aiRouter';
@@ -77,7 +81,10 @@ import { PomodoroWidget } from './components/PomodoroWidget';
 import { ChatHistoryDrawer } from './components/ChatHistoryDrawer';
 import { FocusModeModal } from './components/FocusModeModal';
 import { EisenhowerMatrix } from './components/EisenhowerMatrix';
+import { PlannerView } from './components/PlannerView';
 import { NotificationToast } from './components/NotificationToast';
+import { NotificationBell } from './components/NotificationBell';
+import { NotificationModal } from './components/NotificationModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -127,6 +134,8 @@ export default function App() {
     updateLastActive,
     sendPoke,
     subscribeToPokes,
+    broadcastNotification,
+    subscribeToGlobalNotifications,
     departments
   } = useAppStore();
 
@@ -141,11 +150,15 @@ export default function App() {
     // Subscribe to pokes (buzzes)
     const unsubscribePokes = subscribeToPokes();
 
+    // Subscribe to global broadcasts
+    const unsubscribeGlobal = subscribeToGlobalNotifications();
+
     return () => {
       clearInterval(heartbeat);
       if (unsubscribePokes) unsubscribePokes?.();
+      if (unsubscribeGlobal) unsubscribeGlobal?.();
     };
-  }, [user, updateLastActive, subscribeToPokes]);
+  }, [user, updateLastActive, subscribeToPokes, subscribeToGlobalNotifications]);
 
   // Derived state: Members of the same team
   const myTeamMembers = useMemo(() => {
@@ -349,11 +362,14 @@ export default function App() {
   const [aiTaskPrompt, setAiTaskPrompt] = useState('');
   const [newSubtask, setNewSubtask] = useState('');
   const [activeDashCard, setActiveDashCard] = useState<'time' | 'completed' | 'active' | 'focus' | 'streak' | null>(null);
+  const [broadcastFormData, setBroadcastFormData] = useState({ title: '', body: '', type: 'info' as AppNotification['type'] });
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isFocusModeOpen, setIsFocusModeOpen] = useState(false);
-  const [tasksView, setTasksView] = useState<'all' | 'matrix'>('all');
+  const [tasksView, setTasksView] = useState<'all' | 'matrix' | 'planner'>('all');
   const [projectSearch, setProjectSearch] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const broadcastTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const unsub = initializeAuth();
@@ -367,7 +383,8 @@ export default function App() {
       console.error('Unhandled Promise Rejection:', event.reason);
       addNotification({
         type: 'error',
-        message: `Async Failure: ${event.reason?.message || 'Unknown background error'}`
+        title: 'Background Failure',
+        body: `Async Failure: **${event.reason?.message || 'Unknown background error'}**`
       });
     };
 
@@ -375,7 +392,8 @@ export default function App() {
       console.error('Global Error:', event.error);
       addNotification({
         type: 'error',
-        message: `Runtime Error: ${event.message}`
+        title: 'Runtime Error',
+        body: `Application Error: **${event.message}**`
       });
     };
 
@@ -411,10 +429,18 @@ export default function App() {
     if (!inviteEmail) return;
     const { error } = await inviteUser(inviteEmail);
     if (!error) {
-      addNotification({ type: 'success', message: 'Invitation (Magic Link) sent!' });
+      addNotification({
+        type: 'success',
+        title: 'Invitation Sent',
+        body: 'A Magic Link has been successfully sent to the recipient.'
+      });
       setInviteEmail('');
     } else {
-      addNotification({ type: 'error', message: `Error: ${error.message}` });
+      addNotification({
+        type: 'error',
+        title: 'Invitation Failed',
+        body: `System error: **${error.message}**`
+      });
     }
   };
 
@@ -467,7 +493,11 @@ export default function App() {
 
   const handleOpenModal = (task?: Task) => {
     if (projects.length === 0) {
-      addNotification({ type: 'warning', message: "Create a project first before adding a task." });
+      addNotification({
+        type: 'warning',
+        title: 'Project Required',
+        body: 'Please create at least one project before adding a task.'
+      });
       return;
     }
 
@@ -530,21 +560,81 @@ export default function App() {
     setIsTimeLogModalOpen(true);
   };
 
+  const handleBroadcastMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastFormData.title.trim() || !broadcastFormData.body.trim()) {
+      addNotification({
+        type: 'warning',
+        title: 'Missing Information',
+        body: 'Please provide both a title and a body for the broadcast message.'
+      });
+      return;
+    }
+
+    setIsBroadcasting(true);
+    try {
+      const { error } = await broadcastNotification(broadcastFormData);
+
+      if (!error) {
+        addNotification({
+          type: 'success',
+          title: 'Broadcast Sent',
+          body: 'Your message has been synchronized across all active nexus nodes.'
+        });
+        setBroadcastFormData({ title: '', body: '', type: 'info' });
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Broadcast Failed',
+          body: `System error: **${error.message || error}**`
+        });
+      }
+    } catch (error) {
+      console.error('Error sending broadcast:', error);
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
+
+  const insertBroadcastMarkdown = (prefix: string, suffix = '') => {
+    const textarea = broadcastTextareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = broadcastFormData.body;
+    const selection = text.substring(start, end);
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+
+    const newText = before + prefix + selection + suffix + after;
+    setBroadcastFormData(prev => ({ ...prev, body: newText }));
+
+    // Re-focus and set selection
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + prefix.length + selection.length + suffix.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
   const handleSaveTask = async (e: React.FormEvent, addAnother = false) => {
     e.preventDefault();
     if (formData.project_id === 0) {
-      addNotification({ type: 'warning', message: "A valid project must be selected." });
+      addNotification({
+        type: 'warning',
+        title: 'Project Selection Required',
+        body: 'Please select a project to associate this task with.'
+      });
       return;
     }
 
     const payloadToSave = { ...formData };
 
-    // Hard fallback: If a Contributor's locked dropdown somehow cleared the ID, inject it explicitly
     if (userProfile?.global_role === 'Contributor' && !payloadToSave.assignee_id) {
       payloadToSave.assignee_id = user?.id || '';
     }
 
-    // Supabase strict typing: convert empty frontend strings to actual DB nulls
     if (payloadToSave.assignee_id === '') payloadToSave.assignee_id = null as any;
     if (payloadToSave.due_date === '') payloadToSave.due_date = null as any;
     if (payloadToSave.start_date === '') payloadToSave.start_date = null as any;
@@ -562,12 +652,15 @@ export default function App() {
         if (!addAnother) {
           setIsModalOpen(false);
         } else {
-          // Reset for next task
           setFormData(prev => ({ ...prev, title: '', description: '', subtasks: [] }));
         }
         fetchData();
       } else {
-        addNotification({ type: 'error', message: `Error: ${res.error.message}` });
+        addNotification({
+          type: 'error',
+          title: 'Task Save Failed',
+          body: `Supabase error: **${res.error.message}**`
+        });
       }
     } catch (error) {
       console.error('Error saving task:', error);
@@ -587,7 +680,11 @@ export default function App() {
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectFormData.name.trim()) {
-      addNotification({ type: 'warning', message: "Project name is required." });
+      addNotification({
+        type: 'warning',
+        title: 'Name Required',
+        body: 'Every project needs a descriptive name to be identified.'
+      });
       return;
     }
 
@@ -603,7 +700,11 @@ export default function App() {
         setIsProjectModalOpen(false);
         fetchData();
       } else {
-        addNotification({ type: 'error', message: `Error: ${res.error.message}` });
+        addNotification({
+          type: 'error',
+          title: 'Project Save Failed',
+          body: `Supabase error: **${res.error.message}**`
+        });
       }
     } catch (error) {
       console.error('Error saving project:', error);
@@ -624,7 +725,11 @@ export default function App() {
   const handleSaveTimeLog = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTaskIdForTimeLog || timeLogFormData.hours <= 0) {
-      addNotification({ type: 'warning', message: "Valid hours are required." });
+      addNotification({
+        type: 'warning',
+        title: 'Invalid Entry',
+        body: 'Please enter a positive number of hours to log time.'
+      });
       return;
     }
 
@@ -642,7 +747,11 @@ export default function App() {
         await fetchData();
         setTimeout(() => setIsRefreshing(false), 1000);
       } else {
-        addNotification({ type: 'error', message: `Error: ${res.error.message}` });
+        addNotification({
+          type: 'error',
+          title: 'Time Log Failed',
+          body: `Supabase error: **${res.error.message}**`
+        });
       }
     } catch (error) {
       console.error('Error logging time:', error);
@@ -650,6 +759,7 @@ export default function App() {
       setIsLoading(false);
     }
   };
+
 
   // AbortController for stopping in-flight AI requests
   const abortControllerRef = React.useRef<AbortController | null>(null);
@@ -867,6 +977,7 @@ export default function App() {
   return (
     <div className={`flex h-screen ${isDarkMode ? 'dark bg-[#0A0A0B] text-gray-100' : 'bg-[#F8F9FA] text-[#1A1A1A]'} font-sans overflow-hidden transition-colors duration-300`}>
       <NotificationToast />
+      <NotificationModal /> {/* Render NotificationModal here */}
 
       {/* Team Modal */}
       <AnimatePresence>
@@ -970,7 +1081,7 @@ export default function App() {
               </div>
             </div>
             <button onClick={() => setIsNavOpen(false)} className={`lg:hidden p-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-              <Plus size={20} className="rotate-45" />
+              <Plus className="rotate-45" size={20} />
             </button>
           </div>
 
@@ -1086,13 +1197,10 @@ export default function App() {
             </button>
             <button
               onClick={() => { setActiveTab('reports'); setIsNavOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${activeTab === 'reports' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'reports' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
             >
-              <div className="flex items-center gap-3">
-                <FileText size={18} />
-                <span className="font-medium text-sm">Reports</span>
-              </div>
-              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-[10px] font-bold">1</span>
+              <FileText size={18} />
+              <span className="font-medium text-sm">Reports</span>
             </button>
             <button
               onClick={() => { setActiveTab('support'); setIsNavOpen(false); }}
@@ -1228,12 +1336,7 @@ export default function App() {
                   <span className="text-xs font-bold whitespace-nowrap hidden lg:block">My Team</span>
                 </button>
               )}
-              <button
-                onClick={() => alert('No new notifications')}
-                className={`p-2 ${isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'} transition-colors`}
-              >
-                <AlertCircle size={20} />
-              </button>
+              <NotificationBell />
             </div>
           </header>
 
@@ -1415,6 +1518,12 @@ export default function App() {
                               <CheckSquare size={24} className={isDarkMode ? 'text-gray-600' : 'text-gray-400'} />
                             </div>
                             <p className={`font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No recent tasks</p>
+                            <button
+                              onClick={() => handleOpenModal()}
+                              className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-900/20"
+                            >
+                              Create Task
+                            </button>
                           </div>
                         )}
                       </div>
@@ -1543,13 +1652,13 @@ export default function App() {
                 {/* View Tabs */}
                 <div className={`flex items-center gap-2 mb-5`}>
                   <div className={`flex rounded-xl border p-1 gap-1 ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-100'}`}>
-                    {(['all', 'matrix'] as const).map(v => (
+                    {(['all', 'matrix', 'planner'] as const).map(v => (
                       <button key={v} onClick={() => setTasksView(v)}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${tasksView === v
                           ? 'bg-indigo-600 text-white shadow'
                           : isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'
                           }`}>
-                        {v === 'all' ? '⊞ All Tasks' : '🎯 Eisenhower Matrix'}
+                        {v === 'all' ? '⊞ All Tasks' : v === 'matrix' ? '🎯 Matrix' : '📅 Planner'}
                       </button>
                     ))}
                   </div>
@@ -1575,6 +1684,9 @@ export default function App() {
                 </AnimatePresence>
                 {/* Matrix view */}
                 {tasksView === 'matrix' && <EisenhowerMatrix />}
+
+                {/* Planner view */}
+                {tasksView === 'planner' && <PlannerView />}
 
                 {/* All tasks (kanban cards) */}
                 {tasksView === 'all' && (
@@ -1605,7 +1717,7 @@ export default function App() {
                             <Trash2 size={14} />
                           </button>
                         </div>
-                        <div className="flex justify-between items-start mb-4">
+                        <div className="flex justify-between items-start mb-4 pr-14">
                           <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md border ${getPriorityColor(task.priority)}`}>
                             {task.priority}
                           </span>
@@ -1738,7 +1850,7 @@ export default function App() {
               className={`fixed inset-y-0 right-0 lg:relative w-80 sm:w-96 ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-200'} border-l flex flex-col shadow-2xl z-40 transition-colors duration-300`}
             >
               {/* Chat Header */}
-              <div className={`p-6 border-b ${isDarkMode ? 'border-gray-800 bg-[#1A1A1C]/50' : 'border-gray-100 bg-gray-50/50'} flex items-center justify-between sticky top-0 z-10`}>
+              <div className={`p-6 border-b ${isDarkMode ? 'bg-[#1A1A1C]/50' : 'bg-gray-50/50'} border-gray-800 flex items-center justify-between sticky top-0 z-10`}>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setIsChatHistoryOpen(!isChatHistoryOpen)}
@@ -1746,8 +1858,8 @@ export default function App() {
                   >
                     <History size={18} />
                   </button>
-                  <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 shrink-0">
-                    <MessageSquare size={20} />
+                  <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 shrink-0 overflow-hidden">
+                    <img src="/Yukime-icon-192.png" className="w-full h-full object-cover" alt="Yukime" />
                   </div>
                   <div className="hidden sm:block">
                     <h3 className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'} truncate`}>Work Agent</h3>
@@ -1945,7 +2057,9 @@ export default function App() {
                 {/* AI Assist Header */}
                 <div className={`p-4 ${isDarkMode ? 'bg-[#1A1A1C] border-b border-gray-800' : 'bg-indigo-50 border-b border-indigo-100'} sticky top-0 z-20`}>
                   <div className="relative">
-                    <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500" size={18} />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full overflow-hidden text-indigo-500">
+                      <img src="/Yukime-icon-192.png" className="w-full h-full object-cover" alt="Yukime" />
+                    </div>
                     <input
                       type="text"
                       value={aiTaskPrompt}
@@ -2672,6 +2786,99 @@ export default function App() {
                       </div>
                     </section>
 
+                    {/* Broadcast Intelligence */}
+                    <section className="space-y-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                        <h4 className={`text-xs font-bold ${isDarkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-[0.2em]`}>Broadcast Intelligence</h4>
+                      </div>
+
+                      <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-purple-500/5 border-purple-500/10' : 'bg-purple-50/50 border-purple-100'} border space-y-4`}>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="block text-[10px] font-bold text-purple-500/70 uppercase tracking-widest ml-1">Broadcast Title</label>
+                            <input
+                              type="text"
+                              value={broadcastFormData.title}
+                              onChange={e => setBroadcastFormData(prev => ({ ...prev, title: e.target.value }))}
+                              placeholder="System Update #42"
+                              className={`w-full ${isDarkMode ? 'bg-[#161618] border-gray-800 text-white' : 'bg-white border-gray-200'} border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all`}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="block text-[10px] font-bold text-purple-500/70 uppercase tracking-widest ml-1">Alert Level</label>
+                            <select
+                              value={broadcastFormData.type}
+                              onChange={e => setBroadcastFormData(prev => ({ ...prev, type: e.target.value as any }))}
+                              className={`w-full ${isDarkMode ? 'bg-[#161618] border-gray-800 text-white' : 'bg-white border-gray-200'} border rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all`}
+                            >
+                              <option value="info">Information (Blue)</option>
+                              <option value="success">Success (Green)</option>
+                              <option value="warning">Warning (Amber)</option>
+                              <option value="error">Critical (Red)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <label className="block text-[10px] font-bold text-purple-500/70 uppercase tracking-widest">Message Body (Markdown)</label>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => insertBroadcastMarkdown('**', '**')}
+                                title="Bold"
+                                className={`p-1.5 rounded-lg transition-all ${isDarkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900'}`}
+                              >
+                                <Bold size={14} />
+                              </button>
+                              <button
+                                onClick={() => insertBroadcastMarkdown('_', '_')}
+                                title="Italic"
+                                className={`p-1.5 rounded-lg transition-all ${isDarkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900'}`}
+                              >
+                                <Italic size={14} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const url = prompt('Enter URL:', 'https://');
+                                  if (url) insertBroadcastMarkdown('[', `](${url})`);
+                                }}
+                                title="Add Link"
+                                className={`p-1.5 rounded-lg transition-all ${isDarkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900'}`}
+                              >
+                                <Link size={14} />
+                              </button>
+                              <button
+                                onClick={() => insertBroadcastMarkdown('- ')}
+                                title="Bulleted List"
+                                className={`p-1.5 rounded-lg transition-all ${isDarkMode ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900'}`}
+                              >
+                                <List size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          <textarea
+                            ref={broadcastTextareaRef}
+                            rows={3}
+                            value={broadcastFormData.body}
+                            onChange={e => setBroadcastFormData(prev => ({ ...prev, body: e.target.value }))}
+                            placeholder="Enter your system broadcast details here..."
+                            className={`w-full ${isDarkMode ? 'bg-[#161618] border-gray-800 text-white' : 'bg-white border-gray-200'} border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all resize-none font-mono`}
+                          />
+                        </div>
+                        <button
+                          onClick={handleBroadcastMessage}
+                          disabled={isBroadcasting || !broadcastFormData.title || !broadcastFormData.body}
+                          className={`w-full py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${isBroadcasting
+                            ? 'bg-gray-600 cursor-not-allowed'
+                            : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-500/20 active:scale-[0.98]'
+                            }`}
+                        >
+                          {isBroadcasting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                          {isBroadcasting ? 'Broadcasting...' : 'Manifest Global Alert'}
+                        </button>
+                      </div>
+                    </section>
+
                     {/* User Management */}
                     <section className="space-y-6">
                       <div className="flex items-center gap-2 mb-2">
@@ -2773,7 +2980,7 @@ export default function App() {
         <AnimatePresence>
           {isFocusModeOpen && <FocusModeModal onClose={() => setIsFocusModeOpen(false)} />}
         </AnimatePresence>
-      </div >
-    </div >
+      </div>
+    </div>
   );
 }
