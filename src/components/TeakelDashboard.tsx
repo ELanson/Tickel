@@ -7,10 +7,67 @@ import {
     Activity, Shield, Plus, Sparkles, Loader2, X,
     Trash2, CheckCircle2, AlertCircle, Eye, AlertTriangle,
     MessageSquare, ChevronUp, ChevronDown, Send, SortAsc,
-    Folders, TrendingUp, Target, Clock, Zap
+    Folders, TrendingUp, Target, Clock, Zap, Lock
 } from 'lucide-react';
 import { useAppStore, Lead, Campaign } from '../store/useAppStore';
 import { NotificationBell } from './NotificationBell';
+
+const TeakelTeaser = () => {
+    return (
+        <div className="flex-1 h-screen flex items-center justify-center p-8 bg-[#0A0B10] relative overflow-hidden z-[100]">
+            {/* Background glowing effects */}
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none" />
+            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-teal-600/10 rounded-full blur-[120px] pointer-events-none" />
+
+            <div className="max-w-2xl w-full text-center z-10 space-y-8">
+                <div className="flex justify-center mb-6">
+                    <div className="relative">
+                        <div className="w-20 h-20 bg-gradient-to-br from-[#1a1c1d] to-[#121214] border border-gray-800 rounded-3xl flex items-center justify-center shadow-2xl p-3">
+                            <img src="/TICKEL Logo 192px invert.png" alt="Tickel Logo" className="w-full h-full object-contain opacity-80" />
+                        </div>
+                        <div className="absolute -top-3 -right-3 w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center border-4 border-[#0A0B10]">
+                            <Lock className="text-white" size={14} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-4 shadow-2xl bg-gradient-to-br from-[#121214]/80 to-[#0A0B10]/80 p-10 rounded-3xl border border-gray-800/50 backdrop-blur-xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">
+                        <Sparkles size={14} />
+                        Active Development
+                    </div>
+
+                    <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-emerald-100 to-emerald-400 pb-2">
+                        TEAKEL Intelligence
+                    </h1>
+
+                    <div className="py-4">
+                        <p className="text-lg text-gray-300 font-medium leading-relaxed">
+                            The future of AI-driven lead generation is almost here.
+                        </p>
+                        <p className="text-gray-400 mt-2 leading-relaxed">
+                            Equip your sales force with autonomous web scraping, intelligent contact validation, and deep-learning market analysis. Discover prospects before your competitors even know they exist.
+                        </p>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t border-gray-800/50 flex flex-col items-center">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 p-0.5 mb-3">
+                            <div className="w-full h-full bg-[#121214] rounded-full flex items-center justify-center border-2 border-transparent">
+                                <span className="text-white font-bold text-xs">TD</span>
+                            </div>
+                        </div>
+                        <p className="text-sm font-medium text-gray-500">
+                            Currently being forged by <span className="text-emerald-400 font-bold">Tickel Dev</span> at Rickel Industries.
+                        </p>
+                        <button onClick={() => useAppStore.getState().setActiveTab('dashboard')} className="mt-6 px-6 py-2 rounded-xl bg-[#1a1c1d] border border-gray-800 text-white text-sm font-bold hover:bg-gray-800 transition-colors flex items-center gap-2">
+                            <ArrowLeft size={16} /> Back to Hub
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // --- Reactive mobile breakpoint hook (mirrors Tailwind md: = 768px) ---
 function useIsMobile() {
@@ -1273,7 +1330,7 @@ const ReportsModule = () => {
 
 // --- Main Dashboard Component ---
 export const TeakelDashboard: React.FC = () => {
-    const { isDarkMode, teakelActiveTab, setTeakelActiveTab, setActiveTab, fetchLeads } = useAppStore();
+    const { isDarkMode, teakelActiveTab, setTeakelActiveTab, setActiveTab, fetchLeads, userProfile } = useAppStore();
     const isMobile = useIsMobile();
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     useEffect(() => { if (isMobile) setIsSidebarOpen(false); }, [isMobile]);
@@ -1281,6 +1338,13 @@ export const TeakelDashboard: React.FC = () => {
     useEffect(() => {
         fetchLeads();
     }, [fetchLeads]);
+
+    // Check if user is a Global Admin
+    const isGlobalAdmin = userProfile?.global_role === 'Global Admin';
+
+    if (!isGlobalAdmin) {
+        return <TeakelTeaser />;
+    }
 
     return (
         <div className="fixed inset-0 z-[100] flex bg-[#0A0A0B] text-white overflow-hidden">

@@ -238,7 +238,7 @@ interface AppState {
     input: string;
     isLoading: boolean;
     isRefreshing: boolean;
-    activeTab: 'dashboard' | 'tasks' | 'reports' | 'analytics' | 'team' | 'support' | 'leads';
+    activeTab: 'dashboard' | 'tasks' | 'reports' | 'analytics' | 'team' | 'support' | 'leads' | 'workflow';
     teakelActiveTab: 'search' | 'vision' | 'list' | 'reports' | 'campaigns' | 'settings';
 
     // Modals & Editing
@@ -1829,7 +1829,9 @@ export const useAppStore = create<AppState>()(
                 useLocalModel: state.useLocalModel,
                 localModelUrl: state.localModelUrl,
                 geminiApiKey: state.geminiApiKey,
-                yukiMaxResults: state.yukiMaxResults
+                yukiMaxResults: state.yukiMaxResults,
+                activeTab: state.activeTab,
+                teakelActiveTab: state.teakelActiveTab
             })
         }
     )

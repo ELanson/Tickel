@@ -52,7 +52,10 @@ import {
   Bold,
   Italic,
   Link,
-  List
+  List,
+  MapPin,
+  CloudRain,
+  Navigation
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -85,6 +88,11 @@ import { PlannerView } from './components/PlannerView';
 import { NotificationToast } from './components/NotificationToast';
 import { NotificationBell } from './components/NotificationBell';
 import { NotificationModal } from './components/NotificationModal';
+import {
+  DashboardWeatherCard, DashboardTrafficCard,
+  WeatherModal, TrafficModal, useEnvironmentalData
+} from './components/EnvironmentalIntelligence';
+import { WorkflowModule } from './components/WorkflowModule';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -361,12 +369,14 @@ export default function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [aiTaskPrompt, setAiTaskPrompt] = useState('');
   const [newSubtask, setNewSubtask] = useState('');
-  const [activeDashCard, setActiveDashCard] = useState<'time' | 'completed' | 'active' | 'focus' | 'streak' | null>(null);
+  const [activeDashCard, setActiveDashCard] = useState<'time' | 'completed' | 'active' | 'focus' | 'streak' | 'weather' | 'traffic' | null>(null);
   const [broadcastFormData, setBroadcastFormData] = useState({ title: '', body: '', type: 'info' as AppNotification['type'] });
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isFocusModeOpen, setIsFocusModeOpen] = useState(false);
   const [tasksView, setTasksView] = useState<'all' | 'matrix' | 'planner'>('all');
   const [projectSearch, setProjectSearch] = useState('');
+
+  const { weather, traffic, loading: envLoading, coords } = useEnvironmentalData();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const broadcastTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1060,8 +1070,9 @@ export default function App() {
       </AnimatePresence>
 
       {activeTab === 'leads' && <TeakelDashboard />}
+      {activeTab === 'workflow' && <WorkflowModule isDarkMode={isDarkMode} />}
 
-      <div className={`flex w-full h-full bg-inherit ${activeTab === 'leads' ? 'hidden' : ''}`}>
+      <div className={`flex w-full h-full bg-inherit ${(activeTab === 'leads' || activeTab === 'workflow') ? 'hidden' : ''}`}>
         {/* Sidebar */}
         {/* Sidebar */}
         <aside className={`
@@ -1176,6 +1187,14 @@ export default function App() {
             >
               <BarChart3 size={18} />
               <span className="font-medium text-sm">Analytics</span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('workflow'); setIsNavOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'workflow' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
+            >
+              <Layers size={18} />
+              <span className="font-medium text-sm">Workflow</span>
             </button>
 
             <button
@@ -1344,7 +1363,7 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
                 {/* 5-Metric Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
 
                   {/* Card 1: Total Time */}
                   <button onClick={() => setActiveDashCard('time')} className="bg-[#1a1c1d] p-5 rounded-[20px] border border-gray-800 shadow-lg relative overflow-hidden group text-left hover:border-emerald-500/30 hover:shadow-emerald-500/10 transition-all cursor-pointer">
@@ -1435,6 +1454,26 @@ export default function App() {
                     </div>
                     <div className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500/0 via-orange-500/60 to-orange-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </button>
+
+                  {/* Card 6: Weather */}
+                  <div className="col-span-2 lg:col-span-1 h-32 sm:h-auto">
+                    <DashboardWeatherCard
+                      weather={weather}
+                      loading={envLoading}
+                      isDarkMode={isDarkMode}
+                      onClick={() => setActiveDashCard('weather')}
+                    />
+                  </div>
+
+                  {/* Card 7: Traffic */}
+                  <div className="col-span-2 lg:col-span-1 h-32 sm:h-auto">
+                    <DashboardTrafficCard
+                      traffic={traffic}
+                      loading={envLoading}
+                      isDarkMode={isDarkMode}
+                      onClick={() => setActiveDashCard('traffic')}
+                    />
+                  </div>
                 </div>
 
                 {/* Dashboard Card Modals */}
@@ -1455,6 +1494,8 @@ export default function App() {
                   {activeDashCard === 'active' && <ActiveTasksModal onClose={() => setActiveDashCard(null)} />}
                   {activeDashCard === 'focus' && <FocusScoreModal onClose={() => setActiveDashCard(null)} />}
                   {activeDashCard === 'streak' && <ConsistencyModal onClose={() => setActiveDashCard(null)} />}
+                  {activeDashCard === 'weather' && <WeatherModal weather={weather} isDarkMode={isDarkMode} onClose={() => setActiveDashCard(null)} />}
+                  {activeDashCard === 'traffic' && <TrafficModal traffic={traffic} coords={coords} isDarkMode={isDarkMode} onClose={() => setActiveDashCard(null)} />}
                 </AnimatePresence>
 
                 {/* Dual-Column Main Content Grid */}
@@ -1590,7 +1631,50 @@ export default function App() {
                       <FocusAssistant />
                     )}
 
-                    {/* B. Smart Suggestions */}
+                    {/* B. Environmental Intelligence Summary */}
+                    <div className={`${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-100'} rounded-[20px] border shadow-sm p-6 overflow-hidden relative`}>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+                      <h3 className={`font-bold tracking-wide mb-4 ${isDarkMode ? 'text-white' : 'text-gray-800'} flex items-center gap-2 relative z-10`}>
+                        <MapPin size={18} className="text-blue-500" /> Environmental Intelligence
+                      </h3>
+
+                      <div className="space-y-3 relative z-10">
+                        {/* Quick overview of conditions to complement the small cards */}
+                        {!envLoading && weather && traffic ? (
+                          <>
+                            <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-[#1a1c1d] border-gray-800' : 'bg-gray-50 border-gray-100'} flex items-center justify-between`}>
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDarkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
+                                  <CloudRain size={16} />
+                                </div>
+                                <div>
+                                  <p className={`text-sm font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{weather.location} Forecast</p>
+                                  <p className="text-xs text-gray-500 font-medium">{weather.condition}, {weather.temp}°C</p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className={`p-3 rounded-xl border ${isDarkMode ? 'bg-[#1a1c1d] border-gray-800' : 'bg-gray-50 border-gray-100'} flex items-center justify-between`}>
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${traffic.status === 'Clear' ? 'bg-emerald-500/20 text-emerald-400' : (traffic.status === 'Moderate' ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400')}`}>
+                                  {traffic.status === 'Clear' ? <Navigation size={16} /> : <AlertTriangle size={16} />}
+                                </div>
+                                <div>
+                                  <p className={`text-sm font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>{traffic.route}</p>
+                                  <p className="text-xs text-gray-500 font-medium">{traffic.currentTravelTime} mins · {traffic.incidents[0] || 'Clear'}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="animate-pulse flex flex-col gap-3">
+                            <div className="h-14 bg-gray-500/10 rounded-xl w-full"></div>
+                            <div className="h-14 bg-gray-500/10 rounded-xl w-full"></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* C. Smart Suggestions */}
                     <div className={`${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-100'} rounded-[20px] border shadow-sm p-6`}>
                       <h3 className={`font-bold tracking-wide mb-4 ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Smart Suggestions</h3>
                       <div className="space-y-3">
@@ -1641,6 +1725,10 @@ export default function App() {
 
             {activeTab === 'team' && (
               <TeamStructure />
+            )}
+
+            {activeTab === 'reports' && (
+              <ReportsDashboard />
             )}
 
             {activeTab === 'reports' && (
