@@ -260,6 +260,7 @@ interface AppState {
         global_role?: string;
         location?: string;
         coords?: [number, number];
+        isLiveLocation?: boolean;
     };
     user: any | null; // From Supabase Auth
     isAdmin: boolean;
@@ -580,7 +581,8 @@ export const useAppStore = create<AppState>()(
                 name: 'Guest User',
                 avatar_url: null,
                 location: 'Nairobi',
-                coords: [-1.286389, 36.817223]
+                coords: [-1.286389, 36.817223],
+                isLiveLocation: false
             },
             user: null,
             isAdmin: false,

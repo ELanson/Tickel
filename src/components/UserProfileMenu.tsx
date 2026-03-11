@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     ChevronRight, X, User, Camera, Link, KeyRound, ShieldCheck,
     Eye, EyeOff, Bell, Globe, Lock, LogOut, Check, Upload,
-    AlertTriangle, Smartphone, Monitor
+    AlertTriangle, Smartphone, Monitor, Navigation2, RefreshCw
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { supabase } from '../lib/supabase';
@@ -30,11 +30,22 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [saved, setSaved] = useState(false);
     const [location, setLocation] = useState(userProfile.location || '');
     const [coords, setCoords] = useState<[number, number] | undefined>(userProfile.coords || undefined);
+    const [isLive, setIsLive] = useState(userProfile.isLiveLocation || false);
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const watchIdRef = useRef<number | null>(null);
+
+    // Stop watching on unmount
+    useEffect(() => {
+        return () => {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+            }
+        };
+    }, []);
 
     const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -42,8 +53,60 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setUrlInput(URL.createObjectURL(file));
     };
 
+    const reverseGeocode = async (lat: number, lon: number) => {
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+            const data = await res.json();
+            if (data.display_name) {
+                const parts = data.display_name.split(',');
+                const shortName = parts.slice(0, 2).join(',');
+                setLocation(shortName);
+            }
+        } catch (error) {
+            console.error('Reverse geocoding failed:', error);
+        }
+    };
+
+    const toggleLiveLocation = () => {
+        if (isLive) {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+            setIsLive(false);
+        } else {
+            if (!navigator.geolocation) {
+                alert("Geolocation is not supported by your browser");
+                return;
+            }
+
+            setIsLive(true);
+            watchIdRef.current = navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    setCoords([latitude, longitude]);
+                    reverseGeocode(latitude, longitude);
+                },
+                (error) => {
+                    console.error("Geolocation error:", error);
+                    setIsLive(false);
+                },
+                { enableHighAccuracy: true }
+            );
+        }
+    };
+
     const handleLocationSearch = async (query: string) => {
         setLocation(query);
+        // If user starts typing, disable live mode
+        if (isLive) {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+            }
+            setIsLive(false);
+        }
+
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
         if (!query.trim() || query.length < 3) {
@@ -72,10 +135,11 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setCoords([parseFloat(s.lat), parseFloat(s.lon)]);
         setSuggestions([]);
         setShowSuggestions(false);
+        setIsLive(false); // Ensure manual selection disables live mode
     };
 
     const handleSave = () => {
-        setUserProfile({ name, avatar_url: urlInput, location, coords });
+        setUserProfile({ name, avatar_url: urlInput, location, coords, isLiveLocation: isLive });
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
     };
@@ -144,7 +208,16 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             {/* Location */}
             <div className="relative">
-                <label className={labelCls}>Work Location (Overrides Browser)</label>
+                <div className="flex items-center justify-between mb-1.5">
+                    <label className={labelCls}>Work Location</label>
+                    <button 
+                        onClick={toggleLiveLocation}
+                        className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${isLive ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500' : 'bg-gray-500/5 border-gray-500/20 text-gray-500 hover:border-indigo-500/30 hover:text-indigo-400'}`}
+                    >
+                        <Navigation2 size={10} className={isLive ? 'animate-pulse' : ''} />
+                        {isLive ? 'Live Tracking' : 'Use Current Location'}
+                    </button>
+                </div>
                 <div className="relative">
                     <input
                         value={location}
@@ -156,7 +229,7 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         {isSearching ? (
                             <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                         ) : (
-                            <Globe size={14} className="text-gray-500" />
+                            <Globe size={14} className={isLive ? 'text-emerald-500 animate-pulse' : 'text-gray-500'} />
                         )}
                     </div>
                 </div>
@@ -182,8 +255,9 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     )}
                 </AnimatePresence>
                 {coords && !showSuggestions && (
-                    <p className="text-[9px] font-mono text-gray-500 mt-1 flex items-center gap-1">
-                        <Check size={10} className="text-emerald-500" /> Coords established: {coords[0].toFixed(4)}, {coords[1].toFixed(4)}
+                    <p className={`text-[9px] font-mono mt-1 flex items-center gap-1 ${isLive ? 'text-emerald-500' : 'text-gray-500'}`}>
+                        {isLive ? <RefreshCw size={10} className="animate-spin" /> : <Check size={10} className="text-emerald-500" />}
+                        {isLive ? 'Updating live: ' : 'Coords: '} {coords[0].toFixed(4)}, {coords[1].toFixed(4)}
                     </p>
                 )}
             </div>
