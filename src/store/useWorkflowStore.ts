@@ -77,7 +77,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 set({ isLoading: true });
                 try {
                     const { data, error } = await supabase
-                        .from('projects')
+                        .from('workflow_projects')
                         .select('*')
                         .order('created_at', { ascending: false });
 
@@ -93,7 +93,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
             fetchArtworksByProject: async (projectId: string) => {
                 set({ isLoading: true });
                 const { data, error } = await supabase
-                    .from('artworks')
+                    .from('workflow_jobs')
                     .select('*')
                     .eq('project_id', projectId)
                     .order('created_at', { ascending: false });
@@ -106,7 +106,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
             addProject: async (project) => {
                 const { data, error } = await supabase
-                    .from('projects')
+                    .from('workflow_projects')
                     .insert([project])
                     .select();
 
@@ -117,7 +117,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
             addArtwork: async (artwork) => {
                 const { data, error } = await supabase
-                    .from('artworks')
+                    .from('workflow_jobs')
                     .insert([artwork])
                     .select();
 
@@ -129,7 +129,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
             transitionArtworkStatus: async (artworkId, newStatus, notes) => {
                 // 1. Update status
                 const { error: updateError } = await supabase
-                    .from('artworks')
+                    .from('workflow_jobs')
                     .update({ status: newStatus, updated_at: new Date().toISOString() })
                     .eq('id', artworkId);
 
@@ -138,7 +138,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 // 2. Log the change
                 const artwork = get().artworks.find(a => a.id === artworkId);
                 await supabase.from('workflow_logs').insert([{
-                    artwork_id: artworkId,
+                    job_id: artworkId,
                     previous_state: artwork?.status,
                     new_state: newStatus,
                     notes: notes

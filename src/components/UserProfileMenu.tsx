@@ -26,7 +26,7 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [urlInput, setUrlInput] = useState(userProfile.avatar_url || '');
     const [photoTab, setPhotoTab] = useState<'url' | 'upload'>('url');
     const [name, setName] = useState(userProfile.name);
-    const [role, setRole] = useState('Productivity Pro');
+    const [role, setRole] = useState(userProfile.global_role || 'Productivity Pro');
     const [saved, setSaved] = useState(false);
     const [location, setLocation] = useState(userProfile.location || '');
     const [coords, setCoords] = useState<[number, number] | undefined>(userProfile.coords || undefined);
@@ -46,6 +46,17 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             }
         };
     }, []);
+
+    // Sync state when profile is loaded asynchronously from the database
+    useEffect(() => {
+        if (userProfile.name !== 'Guest User') {
+            setName(userProfile.name);
+            setUrlInput(userProfile.avatar_url || '');
+            setLocation(userProfile.location || '');
+            setCoords(userProfile.coords || undefined);
+            setIsLive(userProfile.isLiveLocation || false);
+        }
+    }, [userProfile.name, userProfile.avatar_url, userProfile.location, userProfile.coords, userProfile.isLiveLocation]);
 
     const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -138,8 +149,15 @@ const EditProfilePanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setIsLive(false); // Ensure manual selection disables live mode
     };
 
-    const handleSave = () => {
-        setUserProfile({ name, avatar_url: urlInput, location, coords, isLiveLocation: isLive });
+    const handleSave = async () => {
+        await setUserProfile({ 
+            name, 
+            avatar_url: urlInput, 
+            location, 
+            coords, 
+            isLiveLocation: isLive,
+            global_role: role // Map local role state to global_role in DB
+        });
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
     };

@@ -7,7 +7,7 @@ import {
     Activity, Shield, Plus, Sparkles, Loader2, X,
     Trash2, CheckCircle2, AlertCircle, Eye, AlertTriangle,
     MessageSquare, ChevronUp, ChevronDown, Send, SortAsc,
-    Folders, TrendingUp, Target, Clock, Zap, Lock
+    Folders, TrendingUp, Target, Clock, Zap, Lock, Layout, ClipboardList
 } from 'lucide-react';
 import { useAppStore, Lead, Campaign } from '../store/useAppStore';
 import { NotificationBell } from './NotificationBell';
@@ -471,13 +471,18 @@ const YukiSearch = () => {
 
 // --- Yuki-Vision Module ---
 const YukiVision = () => {
-    const { isDarkMode, yukiIsScanning, startYukiVision, stopYukiVision } = useAppStore();
+    const {
+        isDarkMode, yukiIsScanning, startYukiVision, stopYukiVision,
+        yukiBatchIsScanning, yukiBatchProgress, startYukiBatchVision, stopYukiBatchVision
+    } = useAppStore();
     const fileRef = useRef<HTMLInputElement>(null);
+    const batchFileRef = useRef<HTMLInputElement>(null);
+    const [batchFiles, setBatchFiles] = useState<File[]>([]);
+    const [activeMode, setActiveMode] = useState<'single' | 'batch'>('single');
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         try {
             const reader = new FileReader();
             reader.onload = async (event) => {
@@ -491,66 +496,183 @@ const YukiVision = () => {
                     if (fileRef.current) fileRef.current.value = '';
                 }
             };
-            reader.onerror = (err) => {
-                console.error("FileReader error: ", err);
-            };
             reader.readAsDataURL(file);
         } catch (error) {
             console.error("File processing failed:", error);
         }
     };
 
+    const handleBatchFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files) return;
+        setBatchFiles(prev => [...prev, ...Array.from(files)]);
+        if (batchFileRef.current) batchFileRef.current.value = '';
+    };
+
+    const removeBatchFile = (idx: number) => {
+        setBatchFiles(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const handleStartBatch = async () => {
+        if (batchFiles.length === 0) return;
+        const fileData: { data: string; type: string }[] = await Promise.all(
+            batchFiles.map(file => new Promise<{ data: string; type: string }>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const base64Str = e.target?.result as string;
+                    resolve({ data: base64Str.split(',')[1], type: file.type });
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            }))
+        );
+        setBatchFiles([]);
+        await startYukiBatchVision(fileData);
+    };
+
     return (
-        <div className="p-4 sm:p-8 max-w-4xl mx-auto h-full flex flex-col overflow-y-auto">
+        <div className="p-4 sm:p-8 max-w-4xl mx-auto h-full flex flex-col overflow-y-auto gap-8">
             <PendingDuplicates />
-            <div className="mb-8 sm:mb-12 text-center">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6 border border-indigo-500/20 overflow-hidden p-4">
+            <div className="text-center">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/20 overflow-hidden p-4">
                     <img src={isDarkMode ? "/TICKEL Logo 192px invert.png" : "/TICKEL Logo 192px.png"} className="w-full h-full object-contain" alt="Tickel" />
                 </div>
                 <h2 className={`text-2xl sm:text-3xl font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Yuki-Vision</h2>
                 <p className="text-gray-500 font-medium text-sm">Instant lead extraction from business cards &amp; images</p>
             </div>
 
-            <div className={`relative border-2 border-dashed rounded-3xl p-8 sm:p-16 text-center transition-all ${isDarkMode ? 'border-gray-800 hover:border-indigo-500/50 bg-[#121214]' : 'border-gray-200 hover:border-indigo-500/50 bg-white'}`}>
-                <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={yukiIsScanning} />
-                <div className="pointer-events-none">
-                    {yukiIsScanning ? (
-                        <>
-                            <Loader2 size={48} className="text-indigo-500 animate-spin mx-auto mb-6" />
-                            <h3 className={`text-xl font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Analysing...</h3>
-                            <p className="text-gray-500 font-medium">Gemini is reading the image and extracting contacts</p>
-                        </>
-                    ) : (
-                        <>
-                            <Camera size={48} className="text-gray-600 mx-auto mb-6" />
-                            <h3 className={`text-xl font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Drop a business card or badge</h3>
-                            <p className="text-gray-500 font-medium mb-6">Supports JPG, PNG, WEBP, PDF</p>
-                            <div className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm ${isDarkMode ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-600 border border-indigo-200'}`}>
-                                <FileUp size={18} />
-                                Choose file or drag & drop
-                            </div>
-                        </>
-                    )}
-                </div>
-                {yukiIsScanning && (
+            {/* Mode Switcher */}
+            <div className={`flex rounded-2xl p-1 border ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-gray-100 border-gray-200'}`}>
+                {(['single', 'batch'] as const).map(mode => (
                     <button
-                        onClick={(e) => { e.stopPropagation(); stopYukiVision(); }}
-                        className="pointer-events-auto mt-6 px-6 py-2 rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold text-sm"
+                        key={mode}
+                        onClick={() => setActiveMode(mode)}
+                        className={`flex-1 py-2.5 rounded-xl font-black text-sm transition-all ${
+                            activeMode === mode
+                                ? (isDarkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : 'bg-white text-indigo-600 shadow-sm')
+                                : 'text-gray-500 hover:text-gray-300'
+                        }`}
                     >
-                        Stop Scan
+                        {mode === 'single' ? '📷 Single Scan' : '📦 Batch Upload'}
                     </button>
-                )}
+                ))}
             </div>
 
-            <div className={`mt-8 p-6 rounded-3xl border ${isDarkMode ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-indigo-50 border-indigo-200'}`}>
-                <div className="flex items-start gap-4">
-                    <Sparkles className="text-indigo-500 shrink-0 mt-1" size={20} />
-                    <div>
-                        <h4 className={`text-sm font-black ${isDarkMode ? 'text-white' : 'text-indigo-900'}`}>Bulk Processing Available</h4>
-                        <p className="text-xs text-indigo-500 font-medium">Upload a folder of business cards and let Yukime process them in parallel.</p>
+            {/* Single Scan */}
+            {activeMode === 'single' && (
+                <div className={`relative border-2 border-dashed rounded-3xl p-8 sm:p-16 text-center transition-all ${isDarkMode ? 'border-gray-800 hover:border-indigo-500/50 bg-[#121214]' : 'border-gray-200 hover:border-indigo-500/50 bg-white'}`}>
+                    <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={yukiIsScanning} />
+                    <div className="pointer-events-none">
+                        {yukiIsScanning ? (
+                            <>
+                                <Loader2 size={48} className="text-indigo-500 animate-spin mx-auto mb-6" />
+                                <h3 className={`text-xl font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Analysing...</h3>
+                                <p className="text-gray-500 font-medium">Gemini is reading the image and extracting contacts</p>
+                            </>
+                        ) : (
+                            <>
+                                <Camera size={48} className="text-gray-600 mx-auto mb-6" />
+                                <h3 className={`text-xl font-black mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Drop a business card or badge</h3>
+                                <p className="text-gray-500 font-medium mb-6">Supports JPG, PNG, WEBP, PDF</p>
+                                <div className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm ${isDarkMode ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-600 border border-indigo-200'}`}>
+                                    <FileUp size={18} />
+                                    Choose file or drag &amp; drop
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    {yukiIsScanning && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); stopYukiVision(); }}
+                            className="pointer-events-auto mt-6 px-6 py-2 rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors font-bold text-sm"
+                        >
+                            Stop Scan
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* Batch Upload */}
+            {activeMode === 'batch' && (
+                <div className="flex flex-col gap-5">
+                    <div className={`relative border-2 border-dashed rounded-3xl p-8 text-center transition-all ${isDarkMode ? 'border-gray-800 hover:border-indigo-500/50 bg-[#121214]' : 'border-gray-200 hover:border-indigo-500/50 bg-white'}`}>
+                        <input
+                            ref={batchFileRef}
+                            type="file"
+                            accept="image/*,.pdf"
+                            multiple
+                            onChange={handleBatchFilesSelected}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            disabled={yukiBatchIsScanning}
+                        />
+                        <div className="pointer-events-none">
+                            <FileUp size={36} className="text-gray-600 mx-auto mb-4" />
+                            <h3 className={`text-lg font-black mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Add Business Cards</h3>
+                            <p className="text-gray-500 font-medium text-sm">Select multiple images or PDFs at once</p>
+                        </div>
+                    </div>
+
+                    {batchFiles.length > 0 && (
+                        <div className={`rounded-3xl border overflow-hidden ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-200'}`}>
+                            <div className={`px-5 py-3 border-b flex items-center justify-between ${isDarkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+                                <p className="text-xs font-black text-gray-500 uppercase tracking-widest">{batchFiles.length} file{batchFiles.length > 1 ? 's' : ''} queued</p>
+                                <button onClick={() => setBatchFiles([])} className="text-xs text-gray-600 hover:text-red-400 font-bold transition-colors">Clear all</button>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto divide-y divide-gray-800/30">
+                                {batchFiles.map((f, i) => (
+                                    <div key={i} className="flex items-center justify-between px-5 py-2.5 group">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <Camera size={14} className="text-indigo-400 shrink-0" />
+                                            <p className={`text-xs font-bold truncate ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{f.name}</p>
+                                        </div>
+                                        <button onClick={() => removeBatchFile(i)} className="text-gray-600 hover:text-red-400 transition-colors ml-3 shrink-0 opacity-0 group-hover:opacity-100">
+                                            <X size={13} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {yukiBatchIsScanning && (
+                        <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-indigo-50 border-indigo-200'}`}>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Loader2 size={16} className="text-indigo-500 animate-spin" />
+                                    <p className="text-sm font-black text-indigo-400">Processing batch…</p>
+                                </div>
+                                <span className="text-sm font-black text-indigo-400">{yukiBatchProgress}%</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
+                                <div
+                                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300"
+                                    style={{ width: `${yukiBatchProgress}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex gap-3">
+                        {yukiBatchIsScanning ? (
+                            <button
+                                onClick={stopYukiBatchVision}
+                                className="flex-1 py-3 rounded-2xl border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all font-black text-sm"
+                            >
+                                Stop Batch
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleStartBatch}
+                                disabled={batchFiles.length === 0}
+                                className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-900/30 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                <Sparkles size={16} />
+                                Scan {batchFiles.length > 0 ? `${batchFiles.length} File${batchFiles.length > 1 ? 's' : ''}` : 'Files'}
+                            </button>
+                        )}
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -1327,6 +1449,7 @@ const ReportsModule = () => {
         </div>
     );
 };
+
 
 // --- Main Dashboard Component ---
 export const TeakelDashboard: React.FC = () => {

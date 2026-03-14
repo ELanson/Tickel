@@ -186,7 +186,7 @@ export interface WorkspaceSettings {
     customWebhookUrl?: string;
     planTier: 'free' | 'pro' | 'enterprise';
     cloudAiEnabled: boolean;
-    cloudAiModel: 'gemini-2.5-pro' | 'gemini-1.5-flash';
+    cloudAiModel: 'gemini-1.5-pro' | 'gemini-1.5-flash';
 }
 
 export interface AppNotification {
@@ -229,8 +229,11 @@ interface AppState {
     leads: Lead[];
     yukiIsSearching: boolean;
     yukiIsScanning: boolean;
+    yukiBatchIsScanning: boolean;
+    yukiBatchProgress: number;
     yukiSearchController: AbortController | null;
     yukiVisionController: AbortController | null;
+    yukiBatchController: AbortController | null;
     yukiMaxResults: number;
     pendingDuplicateReviews: DuplicateReview[];
 
@@ -238,8 +241,8 @@ interface AppState {
     input: string;
     isLoading: boolean;
     isRefreshing: boolean;
-    activeTab: 'dashboard' | 'tasks' | 'reports' | 'analytics' | 'team' | 'support' | 'leads' | 'workflow';
-    teakelActiveTab: 'search' | 'vision' | 'list' | 'reports' | 'campaigns' | 'settings';
+    activeTab: 'dashboard' | 'tasks' | 'reports' | 'analytics' | 'team' | 'support' | 'leads' | 'workflow' | 'fboard';
+    teakelActiveTab: 'search' | 'vision' | 'list' | 'reports' | 'campaigns' | 'settings' | 'fboard';
 
     // Modals & Editing
     isModalOpen: boolean;
@@ -388,6 +391,8 @@ interface AppState {
     stopYukiSearch: () => void;
     startYukiVision: (base64: string, mimeType: string) => Promise<void>;
     stopYukiVision: () => void;
+    startYukiBatchVision: (files: { data: string; type: string }[]) => Promise<void>;
+    stopYukiBatchVision: () => void;
     resolveDuplicate: (id: string, action: 'keep_original' | 'overwrite_new' | 'merge', mergedData?: Partial<Lead>) => Promise<void>;
     setTeakelActiveTab: (tab: AppState['teakelActiveTab']) => void;
     setTasks: (tasks: Task[]) => void;
@@ -525,6 +530,9 @@ export const useAppStore = create<AppState>()(
                 lastSearchDuration: 0,
                 sourcesHit: []
             },
+            yukiBatchIsScanning: false,
+            yukiBatchProgress: 0,
+            yukiBatchController: null,
             appointments: [],
             dayPlan: null,
 
@@ -573,7 +581,7 @@ export const useAppStore = create<AppState>()(
                 googleCalendarConnected: false,
                 planTier: 'pro',
                 cloudAiEnabled: true,
-                cloudAiModel: 'gemini-2.5-pro'
+                cloudAiModel: 'gemini-1.5-pro'
             },
             isDarkMode: true,
             isTeamModalOpen: false,
@@ -939,7 +947,7 @@ export const useAppStore = create<AppState>()(
                 set({ yukiIsScanning: true, yukiVisionController: controller });
 
                 try {
-                    const token = process.env.VITE_SUPABASE_ANON_KEY || 'dummy';
+                    const token = import.meta.env.VITE_SUPABASE_ANON_KEY || 'dummy';
 
                     const response = await fetch('/api/teakel-vision', {
                         method: 'POST',
@@ -985,6 +993,71 @@ export const useAppStore = create<AppState>()(
                 if (yukiVisionController) {
                     yukiVisionController.abort();
                     set({ yukiIsScanning: false, yukiVisionController: null });
+                }
+            },
+            startYukiBatchVision: async (files) => {
+                const state = get();
+                if (state.yukiBatchIsScanning) return;
+
+                const controller = new AbortController();
+                set({ yukiBatchIsScanning: true, yukiBatchProgress: 0, yukiBatchController: controller });
+
+                try {
+                    const total = files.length;
+                    let completed = 0;
+
+                    const processFile = async (file: { data: string, type: string }) => {
+                        try {
+                            const token = import.meta.env.VITE_SUPABASE_ANON_KEY || 'dummy';
+                            const response = await fetch('/api/teakel-vision', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({ imageBase64: file.data, mimeType: file.type }),
+                                signal: controller.signal
+                            });
+
+                            if (response.ok) {
+                                const data = await response.json();
+                                if (data.lead && (data.lead.name || data.lead.company || data.lead.email)) {
+                                    await get().addLead({ ...data.lead, source: 'vision' });
+                                }
+                            }
+                        } catch (err: any) {
+                            if (err.name !== 'AbortError') console.error("Batch Vision individual file error:", err);
+                        } finally {
+                            completed++;
+                            set({ yukiBatchProgress: Math.round((completed / total) * 100) });
+                        }
+                    };
+
+                    // Process in parallel with a concurrency limit if needed, 
+                    // but for now simple Promise.all is fine for small batches.
+                    await Promise.all(files.map(f => processFile(f)));
+
+                    get().addNotification({
+                        type: 'success',
+                        title: 'Batch Scan Complete',
+                        body: `Processed ${total} files. Check your leads list.`
+                    });
+                } catch (error: any) {
+                    if (error.name === 'AbortError') {
+                        get().addNotification({ type: 'warning', title: 'Batch Stopped', body: 'Batch scanning was halted.' });
+                    } else {
+                        console.error("YukiBatchVision error:", error);
+                        get().addNotification({ type: 'error', title: 'Batch Failed', body: 'An error occurred during batch processing.' });
+                    }
+                } finally {
+                    set((s) => s.yukiBatchController === controller ? { yukiBatchIsScanning: false, yukiBatchProgress: 0, yukiBatchController: null } : s);
+                }
+            },
+            stopYukiBatchVision: () => {
+                const { yukiBatchController } = get();
+                if (yukiBatchController) {
+                    yukiBatchController.abort();
+                    set({ yukiBatchIsScanning: false, yukiBatchController: null });
                 }
             },
             setPomodoroState: (patch) => set((state) => ({
@@ -1058,9 +1131,37 @@ export const useAppStore = create<AppState>()(
                 }
             },
             toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
-            setUserProfile: (profile) => set((state) => ({
-                userProfile: { ...state.userProfile, ...profile }
-            })),
+            setUserProfile: async (profile) => {
+                const uid = get().user?.id;
+                set((state) => ({
+                    userProfile: { ...state.userProfile, ...profile }
+                }));
+
+                if (uid) {
+                    try {
+                        const updateData: any = { id: uid }; // Include ID for upsert
+                        if (profile.name) updateData.full_name = profile.name;
+                        if (profile.avatar_url !== undefined) updateData.avatar_url = profile.avatar_url;
+                        if (profile.location !== undefined) updateData.location = profile.location;
+                        if (profile.coords !== undefined) updateData.coords = profile.coords;
+                        if (profile.global_role !== undefined) updateData.global_role = profile.global_role;
+
+                        if (Object.keys(updateData).length > 1) {
+                            console.log('[Store] Persisting profile update to Supabase:', updateData);
+                            const { error } = await supabase.from('profiles').upsert(updateData);
+                            if (error) {
+                                console.error('[Store] Error persisting profile update:', error.message);
+                            } else {
+                                console.log('[Store] Profile successfully persisted.');
+                            }
+                        }
+                    } catch (e) {
+                        console.error('[Store] Profile persistence exception:', e);
+                    }
+                } else {
+                    console.warn('[Store] Cannot persist profile: No authenticated user ID found.');
+                }
+            },
 
             fetchSystemHealth: async () => {
                 const startTime = Date.now();
@@ -1107,16 +1208,28 @@ export const useAppStore = create<AppState>()(
             setUser: async (user) => {
                 set({ user });
                 if (user) {
-                    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                    console.log('[Store] Fetching profile for user:', user.id);
+                    const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                    
+                    if (error) {
+                        console.warn('[Store] Profile fetch error (row may not exist):', error.message);
+                    }
+
                     if (profile) {
+                        console.log('[Store] Found profile in DB:', profile.full_name);
                         set({
                             userProfile: {
                                 name: profile.full_name || 'Guest User',
                                 avatar_url: profile.avatar_url,
-                                global_role: profile.global_role || 'User'
+                                global_role: profile.global_role || 'User',
+                                location: profile.location || 'Nairobi',
+                                coords: profile.coords || [-1.286389, 36.817223],
+                                isLiveLocation: false 
                             },
                             isAdmin: profile.is_admin || false
                         });
+                    } else {
+                        console.log('[Store] No profile record found in DB for user.');
                     }
                 } else {
                     set({ isAdmin: false });

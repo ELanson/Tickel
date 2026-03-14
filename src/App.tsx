@@ -55,7 +55,10 @@ import {
   List,
   MapPin,
   CloudRain,
-  Navigation
+  Navigation,
+  Table,
+  Download,
+  Layout
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -475,14 +478,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if (user) {
-      const metadata = user.user_metadata;
-      if (metadata?.full_name && userProfile.name === 'Guest User') {
-        setUserProfile({ name: metadata.full_name });
-      }
-    }
-  }, [user, setUserProfile, userProfile.name]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1074,6 +1069,86 @@ export default function App() {
     return 'text-indigo-500 bg-indigo-500/10';
   };
 
+const FBoard = () => {
+  const { isDarkMode } = useAppStore();
+  const productions = [
+    { id: 'p1', name: 'Summer Campaign 2025', boards: 12, status: 'Active', updated: '2h ago' },
+    { id: 'p2', name: 'Social Media Assets Q2', boards: 45, status: 'Exported', updated: '1d ago' },
+    { id: 'p3', name: 'Product Launch Video', boards: 8, status: 'Draft', updated: '3d ago' },
+  ];
+
+  return (
+    <div className="h-full overflow-y-auto p-8">
+      <div className="max-w-5xl mx-auto space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className={`text-2xl font-black mb-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>FBoard Production Hub</h2>
+            <p className="text-gray-500 text-sm font-medium">Manage and track your board productions and assets</p>
+          </div>
+          <button className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-900/30">
+            <Plus size={16} /> New Production
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { label: 'Total Boards', value: '65', icon: Table, color: 'emerald', bg: 'bg-emerald-500/10' },
+            { label: 'Active Productions', value: '3', icon: Activity, color: 'indigo', bg: 'bg-indigo-500/10' },
+            { label: 'Exported Assets', value: '128', icon: Download, color: 'amber', bg: 'bg-amber-500/10' },
+          ].map(stat => (
+            <div key={stat.label} className={`p-6 rounded-3xl border ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs font-black text-gray-500 uppercase tracking-widest">{stat.label}</p>
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${stat.bg}`}>
+                  <stat.icon size={16} className={`text-${stat.color}-500`} />
+                </div>
+              </div>
+              <p className={`text-3xl font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{stat.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className={`rounded-3xl border overflow-hidden ${isDarkMode ? 'bg-[#121214] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
+          <div className="px-6 py-4 border-b border-gray-800/50 flex items-center justify-between">
+            <h3 className={`text-sm font-black uppercase tracking-widest ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Recent Productions</h3>
+            <button className="text-xs text-indigo-400 font-bold hover:underline">View All</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className={`border-b ${isDarkMode ? 'border-gray-800/50' : 'border-gray-100'}`}>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Name</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Boards</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest">Last Updated</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${isDarkMode ? 'divide-gray-800/10' : 'divide-gray-100'}`}>
+                {productions.map(p => (
+                  <tr key={p.id} className={`hover:bg-gray-800/20 transition-colors cursor-pointer`}>
+                    <td className="px-6 py-4 text-sm font-bold">{p.name}</td>
+                    <td className="px-6 py-4 text-xs font-bold text-gray-500">{p.boards}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase ${
+                        p.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400' : 
+                        p.status === 'Exported' ? 'bg-indigo-500/10 text-indigo-400' : 
+                        'bg-amber-500/10 text-amber-400'
+                      }`}>
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-gray-600 font-medium">{p.updated}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
   if (!user) {
     return <Auth />;
   }
@@ -1164,9 +1239,10 @@ export default function App() {
       </AnimatePresence>
 
       {activeTab === 'leads' && <TeakelDashboard />}
-      {activeTab === 'workflow' && <WorkflowModule isDarkMode={isDarkMode} />}
+      {activeTab === 'workflow' && <WorkflowModule />}
+      {activeTab === 'fboard' && <FBoard />}
 
-      <div className={`flex w-full h-full bg-inherit ${(activeTab === 'leads' || activeTab === 'workflow') ? 'hidden' : ''}`}>
+      <div className={`flex w-full h-full bg-inherit ${(activeTab === 'leads' || activeTab === 'workflow' || activeTab === 'fboard') ? 'hidden' : ''}`}>
         {/* Sidebar */}
         {/* Sidebar */}
         <aside className={`
@@ -1315,6 +1391,17 @@ export default function App() {
               <FileText size={18} />
               <span className="font-medium text-sm">Reports</span>
             </button>
+            <button
+              onClick={() => { setActiveTab('fboard'); setIsNavOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${activeTab === 'fboard' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
+            >
+              <div className="flex items-center gap-3">
+                <Layout size={18} />
+                <span className="font-medium text-sm">FBoard</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold">New</span>
+            </button>
+
             <button
               onClick={() => { setActiveTab('support'); setIsNavOpen(false); }}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${activeTab === 'support' ? (isDarkMode ? 'bg-[#1a1c1d] text-white' : 'bg-gray-900 text-white') : (isDarkMode ? 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200' : 'text-gray-500 hover:bg-gray-100')}`}
